@@ -32,6 +32,8 @@ from route_api.route_selection import (
 
 GENERATOR_VERSIONS = {"running": "running-loop-1", "road_cycling": "road-cycling-loop-1"}
 MAX_ATTEMPTS = 5
+# HeiGIT's longest round trip (feasibility/EVIDENCE.md).
+MAX_ROUND_TRIP_M = 100_000
 ROUND_TRIP_FAILURES_BEFORE_VIA = 2
 # A via loop through 3 points on a circle through the start is about 5.66 radii as the crow
 # flies; paths add roughly 30%.
@@ -63,10 +65,11 @@ def generate(
     for _ in range(MAX_ATTEMPTS):
         if round_trip_failures < ROUND_TRIP_FAILURES_BEFORE_VIA:
             seed += 1
+            round_trip_m = min(length_m, MAX_ROUND_TRIP_M)
             attempt = Attempt(
-                method="round_trip", parameters={"length_m": round(length_m), "seed": seed}
+                method="round_trip", parameters={"length_m": round(round_trip_m), "seed": seed}
             )
-            body = round_trip_body(activity, start, length_m, seed)
+            body = round_trip_body(activity, start, round_trip_m, seed)
         else:
             bearing = (inland_bearing(start) + VIA_TURNS[via_turn % len(VIA_TURNS)]) % 360
             attempt = Attempt(
