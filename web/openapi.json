@@ -1,0 +1,649 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Singapore route creator API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/places/search": {
+      "post": {
+        "summary": "Search Places",
+        "operationId": "search_places_api_places_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaceSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaceSearchResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/route-requests": {
+      "post": {
+        "summary": "Create Route Request",
+        "operationId": "create_route_request_api_route_requests_post",
+        "parameters": [
+          {
+            "name": "X-Owner-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._-]{1,64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Owner-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RouteRequestCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteRequest"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/api/route-requests/{route_request_id}": {
+      "get": {
+        "summary": "Get Route Request",
+        "operationId": "get_route_request_api_route_requests__route_request_id__get",
+        "parameters": [
+          {
+            "name": "route_request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Route Request Id"
+            }
+          },
+          {
+            "name": "X-Owner-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._-]{1,64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Owner-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteRequest"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Candidate": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "const": "onemap",
+            "title": "Source",
+            "default": "onemap"
+          },
+          "source_id": {
+            "type": "string",
+            "title": "Source Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "postal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postal"
+          },
+          "point": {
+            "$ref": "#/components/schemas/Point"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_id",
+          "name",
+          "address",
+          "postal",
+          "point"
+        ],
+        "title": "Candidate"
+      },
+      "ConfirmedStart": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "onemap",
+              "map_selection"
+            ],
+            "title": "Source"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "postal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postal"
+          },
+          "point": {
+            "$ref": "#/components/schemas/Point"
+          },
+          "retrieved_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Retrieved At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "source_id",
+          "query",
+          "name",
+          "address",
+          "postal",
+          "point",
+          "retrieved_at"
+        ],
+        "title": "ConfirmedStart"
+      },
+      "ErrorDetail": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "invalid_request",
+              "outside_singapore",
+              "candidate_not_found",
+              "not_found",
+              "provider_not_configured",
+              "provider_unavailable",
+              "provider_rejected",
+              "provider_response_invalid"
+            ],
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorDetail"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorDetail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "title": "ErrorResponse"
+      },
+      "MapStartChoice": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "map",
+            "title": "Kind"
+          },
+          "point": {
+            "$ref": "#/components/schemas/Point"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "point"
+        ],
+        "title": "MapStartChoice"
+      },
+      "NamedStartChoice": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "named",
+            "title": "Kind"
+          },
+          "query": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Query"
+          },
+          "source_id": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Source Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "query",
+          "source_id"
+        ],
+        "title": "NamedStartChoice"
+      },
+      "PlaceSearchRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Query"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "PlaceSearchRequest"
+      },
+      "PlaceSearchResponse": {
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "no_match",
+              "single_match",
+              "multiple_matches"
+            ],
+            "title": "Outcome",
+            "description": "A start is never chosen automatically: even a single match needs confirming."
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/Candidate"
+            },
+            "type": "array",
+            "title": "Candidates"
+          },
+          "more_results": {
+            "type": "boolean",
+            "title": "More Results",
+            "description": "OneMap has more pages; a more specific query helps."
+          }
+        },
+        "type": "object",
+        "required": [
+          "outcome",
+          "candidates",
+          "more_results"
+        ],
+        "title": "PlaceSearchResponse"
+      },
+      "Point": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "Point",
+            "title": "Type",
+            "default": "Point"
+          },
+          "coordinates": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Coordinates",
+            "description": "[longitude, latitude] in degrees"
+          }
+        },
+        "type": "object",
+        "required": [
+          "coordinates"
+        ],
+        "title": "Point"
+      },
+      "RouteRequest": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "activity": {
+            "type": "string",
+            "enum": [
+              "running",
+              "road_cycling"
+            ],
+            "title": "Activity"
+          },
+          "start": {
+            "$ref": "#/components/schemas/ConfirmedStart"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "activity",
+          "start",
+          "created_at"
+        ],
+        "title": "RouteRequest"
+      },
+      "RouteRequestCreate": {
+        "properties": {
+          "activity": {
+            "type": "string",
+            "enum": [
+              "running",
+              "road_cycling"
+            ],
+            "title": "Activity"
+          },
+          "start": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/NamedStartChoice"
+              },
+              {
+                "$ref": "#/components/schemas/MapStartChoice"
+              }
+            ],
+            "title": "Start",
+            "discriminator": {
+              "propertyName": "kind",
+              "mapping": {
+                "map": "#/components/schemas/MapStartChoice",
+                "named": "#/components/schemas/NamedStartChoice"
+              }
+            }
+          }
+        },
+        "type": "object",
+        "required": [
+          "activity",
+          "start"
+        ],
+        "title": "RouteRequestCreate"
+      }
+    }
+  }
+}

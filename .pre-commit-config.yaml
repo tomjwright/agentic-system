@@ -5,9 +5,9 @@ repos:
       - id: check-yaml
       - id: check-toml
       - id: end-of-file-fixer
-        exclude: ^feasibility/(evidence|tests/fixtures)/
+        exclude: ^(feasibility/(evidence|tests/fixtures)/|api/tests/fixtures/|api/src/route_api/singapore_land.geojson|web/openapi.json)
       - id: trailing-whitespace
-        exclude: ^feasibility/(evidence|tests/fixtures)/
+        exclude: ^(feasibility/(evidence|tests/fixtures)/|api/tests/fixtures/|api/src/route_api/singapore_land.geojson|web/openapi.json)
       - id: check-added-large-files
         args: [--maxkb=1500]
       - id: detect-private-key
