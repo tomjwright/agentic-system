@@ -92,6 +92,7 @@ def create_app(onemap: OneMap, engine: Engine, local_owner: str) -> FastAPI:
         request_id = request.headers.get("X-Request-ID", "")
         if not re.match(ID_PATTERN, request_id):
             request_id = uuid.uuid4().hex
+        request.state.request_id = request_id
         started = time.monotonic()
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
@@ -117,7 +118,12 @@ def create_app(onemap: OneMap, engine: Engine, local_owner: str) -> FastAPI:
 
     @app.exception_handler(ProviderError)
     async def provider_failed(request: Request, error: ProviderError) -> JSONResponse:
-        log_event("provider_error", provider="onemap", code=error.code)
+        log_event(
+            "provider_error",
+            request_id=request.state.request_id,
+            provider="onemap",
+            code=error.code,
+        )
         status = 502
         if error.code == "provider_not_configured":
             status = 503

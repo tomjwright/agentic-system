@@ -168,6 +168,19 @@ def test_provider_outage_is_a_redacted_error(
     assert response.json()["error"]["code"] == "provider_unavailable"
     assert FAKE_TOKEN not in response.text
     assert FAKE_TOKEN not in caplog.text
+    provider_lines = []
+    for record in caplog.records:
+        line = json.loads(record.getMessage())
+        if line["event"] == "provider_error":
+            provider_lines.append(line)
+    assert provider_lines == [
+        {
+            "event": "provider_error",
+            "request_id": response.headers["X-Request-ID"],
+            "provider": "onemap",
+            "code": "provider_unavailable",
+        }
+    ]
 
 
 def test_expired_token_is_reported_as_a_provider_rejection(clean_engine: Engine) -> None:
