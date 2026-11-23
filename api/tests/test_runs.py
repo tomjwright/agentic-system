@@ -286,8 +286,12 @@ def test_invalid_loops_are_rejected_not_repaired(
         b' "metadata": {}}',
         b'{"type": "FeatureCollection", "features": [{"geometry": {"type": "Point",'
         b' "coordinates": [103.8, 1.3]}, "properties": {"summary": {}}}], "metadata": {}}',
+        b'{"type": "FeatureCollection", "features": [{"geometry": {"type": "LineString",'
+        b' "coordinates": [[103.8, 1.3], [103.8, 1.31]]}, "properties": {"summary": {},'
+        b' "extras": {"surface": {"summary": [{"value": NaN, "distance": 10}]}}}}],'
+        b' "metadata": {}}',
     ],
-    ids=["not-json", "no-route", "not-finite", "not-a-line"],
+    ids=["not-json", "no-route", "not-finite", "not-a-line", "surface-not-finite"],
 )
 def test_malformed_provider_data_is_refused(clean_engine: Engine, body: bytes) -> None:
     def malformed(request: httpx.Request) -> httpx.Response:

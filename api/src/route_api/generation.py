@@ -70,14 +70,14 @@ def generate(heigit: Heigit, start: tuple[float, float], bounds: DistanceBounds)
         try:
             route = heigit.running_route(body)
         except HeigitError as error:
+            attempt.problem = str(error)
             if error.code in FATAL_CODES:
                 return Generation(
                     attempts=attempts,
-                    selection=None,
+                    selection=select_route(start, bounds, attempts),
                     error_code=error.code,
                     error_message=str(error),
                 )
-            attempt.problem = str(error)
             if attempt.method == "round_trip":
                 round_trip_failures += 1
             continue
