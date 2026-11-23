@@ -263,10 +263,10 @@ def create_app(onemap: OneMap, engine: Engine, local_owner: str, heigit: Heigit)
             if not heigit.configured:
                 raise ApiError(503, "provider_not_configured", "Route generation is not configured")
             start = (route_request.start_lon, route_request.start_lat)
-            run = new_run(
-                session, owner, route_request_id, body.operation_id, body.distance, bounds
-            )
             try:
+                run = new_run(
+                    session, owner, route_request_id, body.operation_id, body.distance, bounds
+                )
                 with tracer.start_as_current_span("db.save_run"):
                     session.commit()
             except IntegrityError:
