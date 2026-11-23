@@ -163,13 +163,19 @@ def contiguous_allowed_runs(coordinates: list[list[float]], tracks: list[Track])
                     gap_m = 0.0
             continue
         assert track is not None
+        if current is not None and gap_m > 0:
+            # The step back onto the track is still part of the gap.
+            gap_m += step_m
+            if gap_m > MAX_BRIDGED_GAP_M:
+                current = None
+            else:
+                current.bridged_m += gap_m
+            gap_m = 0.0
+        elif current is not None:
+            current.length_m += step_m
         if current is None:
             current = GreenRun(parks=[], length_m=0.0, bridged_m=0.0, track_ids=[])
             runs.append(current)
-        else:
-            current.bridged_m += gap_m
-            current.length_m += step_m
-            gap_m = 0.0
         if track.park not in current.parks:
             current.parks.append(track.park)
         if track.source_id not in current.track_ids:
