@@ -13,7 +13,7 @@ import httpx
 import pytest
 from sqlalchemy import Engine, text
 
-from tests.recorded_heigit import recorded_response
+from tests.recorded_heigit import FIXTURES, recorded_response
 from tests.test_restrictions import CTE, OVER_CTE
 from tests.test_runs import (
     AVENUE_SOUTH_BLOCK_11,
@@ -113,6 +113,34 @@ def test_trunk_roads_on_the_route_are_disclosed(clean_engine: Engine) -> None:
     disclosure = [line for line in route["limitations"] if "trunk roads" in line]
     assert len(disclosure) == 1
     assert trunk[0] in disclosure[0]
+
+
+def test_minor_road_tunnels_are_disclosed_apart_from_trunk_roads(clean_engine: Engine) -> None:
+    run = cycling_run(
+        clean_engine, recorded_response, {"kind": "range", "min_km": 60, "max_km": 70}
+    )
+    route = selected_route(clean_engine, run["id"])
+
+    [trunk] = [line for line in route["limitations"] if "trunk roads" in line]
+    [tunnels] = [line for line in route["limitations"] if "tunnels on minor roads" in line]
+    assert "Bidadari Park Drive" in tunnels
+    assert "Bidadari Park Drive" not in trunk
+
+
+def test_retries_never_ask_heigit_for_a_round_trip_over_100_km(clean_engine: Engine) -> None:
+    short_ride = (FIXTURES / "heigit_avenue_south_ride_20km_1.json").read_bytes()
+    lengths = []
+
+    def always_the_short_ride(request: httpx.Request) -> httpx.Response:
+        round_trip = json.loads(request.content)["options"].get("round_trip")
+        if round_trip is not None:
+            lengths.append(round_trip["length"])
+        return httpx.Response(200, content=short_ride)
+
+    cycling_run(clean_engine, always_the_short_ride, {"kind": "target", "target_km": 100})
+
+    assert lengths[0] == 100_000
+    assert max(lengths) == 100_000
 
 
 def test_unknown_surface_and_access_are_unknown_never_verified(clean_engine: Engine) -> None:

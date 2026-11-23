@@ -285,10 +285,21 @@ def to_selected_route(
         )
         trunk_m = 0.0
         trunk_names = []
+        tunnel_names = []
         for road in roads:
-            if road.outcome == "on_disclosed_road":
+            if road.outcome != "on_disclosed_road":
+                continue
+            if road.kind == "minor road tunnel":
+                tunnel_names.append(road.name)
+            else:
                 trunk_m += road.on_m
                 trunk_names.append(road.name)
+        if tunnel_names:
+            limitations.insert(
+                3,
+                f"It goes through tunnels on minor roads ({', '.join(tunnel_names)})."
+                " OpenStreetMap records no cycling ban there; follow any signs at the entrance.",
+            )
         if trunk_names:
             limitations.insert(
                 3,
