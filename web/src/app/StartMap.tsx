@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect } from "react";
-import { CircleMarker, MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import {
+  CircleMarker,
+  MapContainer,
+  Polyline,
+  TileLayer,
+  useMap,
+  useMapEvents,
+} from "react-leaflet";
 
 // OneMap's basemap. Its terms require the OneMap logo and this attribution.
 // https://www.onemap.gov.sg/docs/maps/
@@ -19,6 +26,7 @@ const TILE_BOUNDS: [[number, number], [number, number]] = [
 
 type Props = {
   point: [number, number] | null; // [longitude, latitude], as the API sends it
+  route: [number, number][] | null; // [longitude, latitude] points, drawn exactly as stored
   onPick: (point: [number, number]) => void;
 };
 
@@ -39,7 +47,19 @@ function ShowPoint({ point }: { point: [number, number] }) {
   return <CircleMarker center={[point[1], point[0]]} radius={10} pathOptions={{ color: "#c2185b" }} />;
 }
 
-export default function StartMap({ point, onPick }: Props) {
+function ShowRoute({ route }: { route: [number, number][] }) {
+  const map = useMap();
+  const latLngs: [number, number][] = [];
+  for (const [lon, lat] of route) {
+    latLngs.push([lat, lon]);
+  }
+  useEffect(() => {
+    map.fitBounds(latLngs, { padding: [24, 24] });
+  }, [map, route]); // eslint-disable-line react-hooks/exhaustive-deps
+  return <Polyline positions={latLngs} pathOptions={{ color: "#1565c0", weight: 4 }} />;
+}
+
+export default function StartMap({ point, route, onPick }: Props) {
   return (
     <MapContainer
       center={SINGAPORE_CENTRE}
@@ -51,7 +71,11 @@ export default function StartMap({ point, onPick }: Props) {
     >
       <TileLayer url={TILES} attribution={ATTRIBUTION} maxZoom={19} detectRetina />
       <ClickToPick onPick={onPick} />
-      {point && <ShowPoint point={point} />}
+      {point && !route && <ShowPoint point={point} />}
+      {route && <ShowRoute route={route} />}
+      {route && point && (
+        <CircleMarker center={[point[1], point[0]]} radius={8} pathOptions={{ color: "#c2185b" }} />
+      )}
     </MapContainer>
   );
 }

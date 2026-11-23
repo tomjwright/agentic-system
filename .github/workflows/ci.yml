@@ -97,10 +97,14 @@ jobs:
         run: npm audit --audit-level=moderate
       - run: npx playwright install --with-deps chromium
       - name: API-to-browser tests (desktop and mobile)
+        # A synthetic key in the build environment must not reach the bundle (checked below).
+        env:
+          HEIGIT_API_KEY: synthetic-heigit-key-must-not-ship
         run: npm run e2e
-      - name: No OneMap API call or token in the browser bundle
+      - name: No OneMap or HeiGIT call, token or key in the browser bundle
         run: |
           ! grep -rl -e "onemap.gov.sg/api" -e "ONEMAP_API_TOKEN" .next/static
+          ! grep -rl -e "api.heigit.org" -e "HEIGIT_API_KEY" -e "synthetic-heigit-key-must-not-ship" .next
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:
