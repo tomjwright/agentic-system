@@ -207,7 +207,7 @@ export default function RunPanel({ routeRequest, onRoute }: Props) {
             {Math.abs(Math.round(route.deviation_m))} m from {km(route.target_m)}; accepted{" "}
             {km(route.bounds.min_m)} to {km(route.bounds.max_m)})
           </p>
-          <p>Walking time {minutes(route.walking_duration_s)} (not a running time)</p>
+          <p>Walking time {minutes(route.duration_s)} (not a running time)</p>
           <ul className="limitations" aria-label="Limitations">
             {route.limitations.map((limitation) => (
               <li key={limitation}>{limitation}</li>
