@@ -10,11 +10,12 @@ This follows the feasibility go conditions (feasibility/EVIDENCE.md):
   that returns keeps its bearing for the corrected length; one that fails turns.
 
 Road-cycling loops are also checked against the OpenStreetMap restricted roads
-(route_api.restrictions). At most MAX_ATTEMPTS requests are made, and generation stops at
-the first acceptable loop.
+(route_api.restrictions). At most MAX_ATTEMPTS requests are made, none starts after
+TIME_BUDGET_S, and generation stops at the first acceptable loop.
 """
 
 import math
+import time
 
 from pydantic import BaseModel
 
@@ -32,6 +33,9 @@ from route_api.route_selection import (
 
 GENERATOR_VERSIONS = {"running": "running-loop-1", "road_cycling": "road-cycling-loop-1"}
 MAX_ATTEMPTS = 5
+# No new attempt starts after this, so a run (one slow attempt is up to about 63 s) ends
+# inside the 120 s Vercel allows a proxied request (docs/hosting.md).
+TIME_BUDGET_S = 45
 ROUND_TRIP_FAILURES_BEFORE_VIA = 2
 # A via loop through 3 points on a circle through the start is about 5.66 radii as the crow
 # flies; paths add roughly 30%.
@@ -54,13 +58,17 @@ def generate(
     start: tuple[float, float],
     bounds: DistanceBounds,
     restricted_ways: RestrictedWays,
+    time_budget_s: float = TIME_BUDGET_S,
 ) -> Generation:
+    started = time.monotonic()
     attempts: list[Attempt] = []
     length_m = bounds.target_m
     seed = 0
     round_trip_failures = 0
     via_turn = 0
     for _ in range(MAX_ATTEMPTS):
+        if attempts and time.monotonic() - started > time_budget_s:
+            break
         if round_trip_failures < ROUND_TRIP_FAILURES_BEFORE_VIA:
             seed += 1
             attempt = Attempt(

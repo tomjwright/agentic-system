@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
-from tests.conftest import FAKE_TOKEN, api_with
+from tests.conftest import FAKE_TOKEN, api_with, as_owner
 from tests.recorded_onemap import recorded_response
 
 AVENUE_SOUTH_BLOCK_11 = [103.8291052120283, 1.276629534107344]
@@ -29,7 +29,7 @@ def confirm_named(
     start = {"kind": "named", "query": query, "source_id": source_id}
     body = {"activity": "road_cycling", "start": start}
     response: httpx.Response = api.post(
-        "/api/route-requests", json=body, headers={"X-Owner-Id": owner}
+        "/api/route-requests", json=body, headers=as_owner(api, owner)
     )
     return response
 
@@ -38,7 +38,7 @@ def confirm_map(api: TestClient, coordinates: list[Any], owner: str = "tom") -> 
     start = {"kind": "map", "point": {"type": "Point", "coordinates": coordinates}}
     body = {"activity": "running", "start": start}
     response: httpx.Response = api.post(
-        "/api/route-requests", json=body, headers={"X-Owner-Id": owner}
+        "/api/route-requests", json=body, headers=as_owner(api, owner)
     )
     return response
 
@@ -85,7 +85,7 @@ def test_confirmed_named_start_keeps_activity_and_provenance(api: TestClient) ->
     assert start["source"] == "onemap"
     assert start["source_id"] == candidate["source_id"]
     assert start["query"] == "avenue south residence"
-    fetched = api.get(f"/api/route-requests/{route_request['id']}", headers={"X-Owner-Id": "tom"})
+    fetched = api.get(f"/api/route-requests/{route_request['id']}", headers=as_owner(api, "tom"))
     assert fetched.json() == route_request
 
 
@@ -139,8 +139,8 @@ def test_non_finite_coordinates_are_refused(api: TestClient) -> None:
 def test_another_owner_cannot_see_a_start(api: TestClient) -> None:
     created = confirm_map(api, HORT_PARK, owner="tom").json()
 
-    as_tom = api.get(f"/api/route-requests/{created['id']}", headers={"X-Owner-Id": "tom"})
-    as_other = api.get(f"/api/route-requests/{created['id']}", headers={"X-Owner-Id": "someone"})
+    as_tom = api.get(f"/api/route-requests/{created['id']}", headers=as_owner(api, "tom"))
+    as_other = api.get(f"/api/route-requests/{created['id']}", headers=as_owner(api, "someone"))
 
     assert as_tom.status_code == 200
     assert as_other.status_code == 404

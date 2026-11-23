@@ -14,7 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
-from tests.conftest import api_with
+from tests.conftest import api_with, as_owner
 from tests.recorded_heigit import FIXTURES, recorded_response
 from tests.recorded_onemap import recorded_response as recorded_onemap
 
@@ -31,7 +31,7 @@ def confirm_start(
     response = api.post(
         "/api/route-requests",
         json={"activity": activity, "start": start},
-        headers={"X-Owner-Id": owner},
+        headers=as_owner(api, owner),
     )
     assert response.status_code == 201
     request_id: str = response.json()["id"]
@@ -47,7 +47,7 @@ def start_run(
 ) -> httpx.Response:
     body = {"operation_id": operation_id or str(uuid.uuid4()), "distance": distance}
     response: httpx.Response = api.post(
-        f"/api/route-requests/{request_id}/runs", json=body, headers={"X-Owner-Id": owner}
+        f"/api/route-requests/{request_id}/runs", json=body, headers=as_owner(api, owner)
     )
     return response
 
@@ -106,7 +106,7 @@ def test_the_selected_route_keeps_heigit_metres_and_longitude_latitude_order(
         api, confirm_start(api, AVENUE_SOUTH_BLOCK_11), {"kind": "target", "target_km": 5}
     )
 
-    response = api.get(f"/api/runs/{run.json()['id']}/route", headers={"X-Owner-Id": "tom"})
+    response = api.get(f"/api/runs/{run.json()['id']}/route", headers=as_owner(api, "tom"))
 
     assert response.status_code == 200
     route = response.json()
@@ -141,7 +141,7 @@ def test_an_explicit_range_with_no_acceptable_loop_reports_exhaustion(clean_engi
         ["4.662 km is outside 5.000-5.050 km"],
         ["5.073 km is outside 5.000-5.050 km"],
     ]
-    route = api.get(f"/api/runs/{run['id']}/route", headers={"X-Owner-Id": "tom"})
+    route = api.get(f"/api/runs/{run['id']}/route", headers=as_owner(api, "tom"))
     assert route.status_code == 409
     assert route.json()["error"]["code"] == "no_route_selected"
 
@@ -169,9 +169,9 @@ def test_gpx_export_is_exactly_the_stored_path(clean_engine: Engine) -> None:
         api, confirm_start(api, AVENUE_SOUTH_BLOCK_11), {"kind": "target", "target_km": 5}
     )
     run_id = run.json()["id"]
-    route = api.get(f"/api/runs/{run_id}/route", headers={"X-Owner-Id": "tom"}).json()
+    route = api.get(f"/api/runs/{run_id}/route", headers=as_owner(api, "tom")).json()
 
-    response = api.get(f"/api/runs/{run_id}/route.gpx", headers={"X-Owner-Id": "tom"})
+    response = api.get(f"/api/runs/{run_id}/route.gpx", headers=as_owner(api, "tom"))
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/gpx+xml")
@@ -220,7 +220,7 @@ def test_each_run_gets_its_own_immutable_revision(clean_engine: Engine) -> None:
     second = start_run(api, request_id, {"kind": "range", "min_km": 5, "max_km": 5.05}).json()
 
     assert (first["revision"], second["revision"]) == (1, 2)
-    again = api.get(f"/api/runs/{first['id']}", headers={"X-Owner-Id": "tom"}).json()
+    again = api.get(f"/api/runs/{first['id']}", headers=as_owner(api, "tom")).json()
     assert again["distance"] == {"kind": "target", "target_km": 5.0}
     assert again["status"] == "succeeded"
 
@@ -373,9 +373,9 @@ def test_another_owner_cannot_generate_see_or_export_a_run(clean_engine: Engine)
     run_id = start_run(api, request_id, {"kind": "target", "target_km": 5}).json()["id"]
 
     generate = start_run(api, request_id, {"kind": "target", "target_km": 5}, owner="someone")
-    status = api.get(f"/api/runs/{run_id}", headers={"X-Owner-Id": "someone"})
-    route = api.get(f"/api/runs/{run_id}/route", headers={"X-Owner-Id": "someone"})
-    gpx = api.get(f"/api/runs/{run_id}/route.gpx", headers={"X-Owner-Id": "someone"})
+    status = api.get(f"/api/runs/{run_id}", headers=as_owner(api, "someone"))
+    route = api.get(f"/api/runs/{run_id}/route", headers=as_owner(api, "someone"))
+    gpx = api.get(f"/api/runs/{run_id}/route.gpx", headers=as_owner(api, "someone"))
 
     for response in (generate, status, route, gpx):
         assert response.status_code == 404
@@ -403,9 +403,9 @@ def test_the_key_stays_out_of_responses_logs_exports_and_the_database(
     request_id = confirm_start(api, AVENUE_SOUTH_BLOCK_11)
     run = start_run(api, request_id, {"kind": "target", "target_km": 5})
     run_id = run.json()["id"]
-    route = api.get(f"/api/runs/{run_id}/route", headers={"X-Owner-Id": "tom"})
-    gpx = api.get(f"/api/runs/{run_id}/route.gpx", headers={"X-Owner-Id": "tom"})
-    status = api.get(f"/api/runs/{run_id}", headers={"X-Owner-Id": "tom"})
+    route = api.get(f"/api/runs/{run_id}/route", headers=as_owner(api, "tom"))
+    gpx = api.get(f"/api/runs/{run_id}/route.gpx", headers=as_owner(api, "tom"))
+    status = api.get(f"/api/runs/{run_id}", headers=as_owner(api, "tom"))
 
     for response in (run, route, gpx, status):
         assert SYNTHETIC_KEY not in response.text

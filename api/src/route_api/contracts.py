@@ -230,3 +230,8 @@ class SelectedRoute(BaseModel):
     attribution: str
     provider_engine: str
     selected_at: datetime
+
+
+class SignedIn(BaseModel):
+    owner_id: str
+    csrf_token: str = Field(description="Send as X-CSRF-Token with every POST.")

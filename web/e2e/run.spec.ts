@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 
 import { expect, type Page, test } from "@playwright/test";
 
+import { signIn } from "./sign-in";
+
 const BLANK_TILE = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=",
   "base64",
@@ -29,7 +31,7 @@ async function confirmAvenueSouth(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   await stubUpstreams(page);
-  await page.goto("/");
+  await signIn(page);
   await confirmAvenueSouth(page);
 });
 
