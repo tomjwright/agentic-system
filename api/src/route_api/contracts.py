@@ -22,7 +22,6 @@ ErrorCode = Literal[
     "provider_rejected",
     "provider_response_invalid",
     "provider_quota_exhausted",
-    "activity_not_supported",
     "operation_conflict",
     "no_route_selected",
     "generation_interrupted",
@@ -109,7 +108,7 @@ class ErrorResponse(BaseModel):
 
 
 MIN_DISTANCE_KM = 1
-MAX_DISTANCE_KM = 50
+MAX_DISTANCE_KM = 100  # per activity: route_selection.DISTANCE_LIMITS_KM
 
 
 class DistanceTarget(BaseModel):
@@ -191,6 +190,27 @@ class SurfaceDistance(BaseModel):
     distance_m: float
 
 
+class RestrictedRoad(BaseModel):
+    """One OpenStreetMap road from the restriction check that the route comes near."""
+
+    kind: Literal[
+        "expressway", "expressway slip road", "road tunnel", "bicycle=no", "major arterial (trunk)"
+    ]
+    name: str
+    osm_way_ids: list[int]
+    near_m: float = Field(description="Route length within 8 m: crossings, bridges, paths beside")
+    on_m: float = Field(description="Route length running along the road itself")
+    outcome: Literal["on_prohibited_road", "crossing_or_beside", "on_disclosed_road"]
+
+
+class AccessCheck(BaseModel):
+    status: Literal["not_checked", "no_prohibited_road_found"] = Field(
+        description="Access anywhere else on the route is unknown, never verified"
+    )
+    source: str | None = Field(description="The OpenStreetMap extract the check used")
+    roads: list[RestrictedRoad]
+
+
 class SelectedRoute(BaseModel):
     run_id: UUID
     geometry: LineString
@@ -198,11 +218,14 @@ class SelectedRoute(BaseModel):
     target_m: float
     deviation_m: float = Field(description="distance_m minus target_m")
     bounds: DistanceBoundsOut
-    walking_duration_s: float = Field(
-        description="HeiGIT's foot-walking time. It is not a running time."
+    activity: Activity
+    profile: str = Field(description="HeiGIT profile: foot-walking or cycling-road")
+    duration_s: float = Field(
+        description="HeiGIT's time for the profile. For running it is a walking time."
     )
     surfaces: list[SurfaceDistance]
     unknown_surface_share: float = Field(description="Share of the distance with no known surface")
+    access: AccessCheck
     limitations: list[str]
     attribution: str
     provider_engine: str

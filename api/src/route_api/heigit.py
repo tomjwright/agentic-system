@@ -20,8 +20,12 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from route_api.telemetry import tracer
 
 DIRECTIONS_URL = "https://api.heigit.org/openrouteservice/v2/directions/{profile}/geojson"
-RUNNING_PROFILE = "foot-walking"
-AVOID_FEATURES = ["ferries"]
+# Running uses walkable ways; road cycling uses HeiGIT's road-bike profile, which keeps
+# ordinary roads. Steps are avoided for bikes, as in feasibility/EVIDENCE.md.
+PROFILES = {"running": "foot-walking", "road_cycling": "cycling-road"}
+AVOID_FEATURES = {"running": ["ferries"], "road_cycling": ["ferries", "steps"]}
+# A cycling-road via point in a park is often over 350 m (HeiGIT's default) from a road.
+CYCLING_VIA_SNAP_M = 1000
 EXTRA_INFO = ["surface", "waytype", "waycategory", "steepness"]
 TIMEOUT = httpx.Timeout(30.0, connect=5.0)
 ATTEMPTS = 2
@@ -74,9 +78,19 @@ class OrsSummary(BaseModel):
     duration: float = Field(default=0.0, ge=0)
 
 
+class OrsStep(BaseModel):
+    name: str = ""
+    way_points: tuple[int, int]
+
+
+class OrsSegment(BaseModel):
+    steps: list[OrsStep] = []
+
+
 class OrsProperties(BaseModel):
     summary: OrsSummary
     extras: dict[str, OrsExtra] = {}
+    segments: list[OrsSegment] = []
 
 
 class OrsFeature(BaseModel):
@@ -100,35 +114,47 @@ class ProviderRoute(BaseModel):
 
     coordinates: list[tuple[float, float]]  # (longitude, latitude), exactly as HeiGIT sent them
     distance_m: float
-    duration_s: float  # walking time from the foot-walking profile, not a running time
+    duration_s: float  # the profile's own time: walking for running, cycling for road cycling
     surfaces_m: dict[str, float]
+    step_names: list[str] = []  # HeiGIT's street name at each coordinate, "" when unnamed
     engine: dict[str, str]
     attribution: str
 
 
-def round_trip_body(start: tuple[float, float], length_m: float, seed: int) -> dict[str, Any]:
+def round_trip_body(
+    activity: str, start: tuple[float, float], length_m: float, seed: int
+) -> dict[str, Any]:
     return {
         "coordinates": [list(start)],
         "options": {
             "round_trip": {"length": round(length_m), "points": 3, "seed": seed},
-            "avoid_features": AVOID_FEATURES,
+            "avoid_features": AVOID_FEATURES[activity],
         },
         "extra_info": EXTRA_INFO,
         "instructions": True,
     }
 
 
-def via_loop_body(start: tuple[float, float], via: list[tuple[float, float]]) -> dict[str, Any]:
+def via_loop_body(
+    activity: str, start: tuple[float, float], via: list[tuple[float, float]]
+) -> dict[str, Any]:
     coordinates = [list(start)]
     for point in via:
         coordinates.append(list(point))
     coordinates.append(list(start))
-    return {
+    body: dict[str, Any] = {
         "coordinates": coordinates,
-        "options": {"avoid_features": AVOID_FEATURES},
+        "options": {"avoid_features": AVOID_FEATURES[activity]},
         "extra_info": EXTRA_INFO,
         "instructions": True,
     }
+    if activity == "road_cycling":
+        radiuses = [350]
+        for _ in via:
+            radiuses.append(CYCLING_VIA_SNAP_M)
+        radiuses.append(350)
+        body["radiuses"] = radiuses
+    return body
 
 
 class Heigit:
@@ -149,8 +175,8 @@ class Heigit:
     def configured(self) -> bool:
         return bool(self.api_key)
 
-    def running_route(self, body: dict[str, Any]) -> ProviderRoute:
-        content = self.post(RUNNING_PROFILE, body)
+    def route(self, activity: str, body: dict[str, Any]) -> ProviderRoute:
+        content = self.post(PROFILES[activity], body)
         try:
             payload = OrsResponse.model_validate_json(content)
         except ValidationError:
@@ -167,6 +193,12 @@ class Heigit:
             for item in surface.summary:
                 name = SURFACES.get(int(item.value), f"code {item.value:g}")
                 surfaces_m[name] = surfaces_m.get(name, 0.0) + item.distance
+        step_names = [""] * len(coordinates)
+        for segment in feature.properties.segments:
+            for step in segment.steps:
+                first, last = step.way_points
+                for vertex in range(max(first, 0), min(last + 1, len(coordinates))):
+                    step_names[vertex] = step.name
         return ProviderRoute(
             coordinates=coordinates,
             distance_m=feature.properties.summary.distance,
@@ -174,6 +206,7 @@ class Heigit:
             surfaces_m=surfaces_m,
             engine=payload.metadata.engine,
             attribution=payload.metadata.attribution,
+            step_names=step_names,
         )
 
     def post(self, profile: str, body: dict[str, Any]) -> bytes:
