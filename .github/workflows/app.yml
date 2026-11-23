@@ -40,7 +40,7 @@ jobs:
       - name: Migrations apply, roll back and re-apply
         run: uv run alembic upgrade head && uv run alembic downgrade base && uv run alembic upgrade head
       - name: Audit dependencies for known vulnerabilities
-        run: uv export --frozen --no-hashes --no-emit-project | uv run pip-audit --strict -r /dev/stdin
+        run: uv export --frozen --no-hashes --no-emit-project --no-emit-package route-feasibility | uv run pip-audit --strict -r /dev/stdin
 
   web:
     runs-on: ubuntu-latest

@@ -675,6 +675,45 @@
   },
   "components": {
     "schemas": {
+      "AccessCheck": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_checked",
+              "no_prohibited_road_found"
+            ],
+            "title": "Status",
+            "description": "Access anywhere else on the route is unknown, never verified"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "description": "The OpenStreetMap extract the check used"
+          },
+          "roads": {
+            "items": {
+              "$ref": "#/components/schemas/RestrictedRoad"
+            },
+            "type": "array",
+            "title": "Roads"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "source",
+          "roads"
+        ],
+        "title": "AccessCheck"
+      },
       "Candidate": {
         "properties": {
           "source": {
@@ -834,13 +873,13 @@
           },
           "min_km": {
             "type": "number",
-            "maximum": 50.0,
+            "maximum": 100.0,
             "minimum": 1.0,
             "title": "Min Km"
           },
           "max_km": {
             "type": "number",
-            "maximum": 50.0,
+            "maximum": 100.0,
             "minimum": 1.0,
             "title": "Max Km"
           }
@@ -864,7 +903,7 @@
           },
           "target_km": {
             "type": "number",
-            "maximum": 50.0,
+            "maximum": 100.0,
             "minimum": 1.0,
             "title": "Target Km"
           }
@@ -892,7 +931,6 @@
               "provider_rejected",
               "provider_response_invalid",
               "provider_quota_exhausted",
-              "activity_not_supported",
               "operation_conflict",
               "no_route_selected",
               "generation_interrupted"
@@ -1194,6 +1232,62 @@
         ],
         "title": "Point"
       },
+      "RestrictedRoad": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "expressway",
+              "expressway slip road",
+              "road tunnel",
+              "bicycle=no",
+              "major arterial (trunk)"
+            ],
+            "title": "Kind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "osm_way_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Osm Way Ids"
+          },
+          "near_m": {
+            "type": "number",
+            "title": "Near M",
+            "description": "Route length within 8 m: crossings, bridges, paths beside"
+          },
+          "on_m": {
+            "type": "number",
+            "title": "On M",
+            "description": "Route length running along the road itself"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "on_prohibited_road",
+              "crossing_or_beside",
+              "on_disclosed_road"
+            ],
+            "title": "Outcome"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "name",
+          "osm_way_ids",
+          "near_m",
+          "on_m",
+          "outcome"
+        ],
+        "title": "RestrictedRoad",
+        "description": "One OpenStreetMap road from the restriction check that the route comes near."
+      },
       "RouteCandidate": {
         "properties": {
           "position": {
@@ -1392,10 +1486,23 @@
           "bounds": {
             "$ref": "#/components/schemas/DistanceBoundsOut"
           },
-          "walking_duration_s": {
+          "activity": {
+            "type": "string",
+            "enum": [
+              "running",
+              "road_cycling"
+            ],
+            "title": "Activity"
+          },
+          "profile": {
+            "type": "string",
+            "title": "Profile",
+            "description": "HeiGIT profile: foot-walking or cycling-road"
+          },
+          "duration_s": {
             "type": "number",
-            "title": "Walking Duration S",
-            "description": "HeiGIT's foot-walking time. It is not a running time."
+            "title": "Duration S",
+            "description": "HeiGIT's time for the profile. For running it is a walking time."
           },
           "surfaces": {
             "items": {
@@ -1408,6 +1515,9 @@
             "type": "number",
             "title": "Unknown Surface Share",
             "description": "Share of the distance with no known surface"
+          },
+          "access": {
+            "$ref": "#/components/schemas/AccessCheck"
           },
           "limitations": {
             "items": {
@@ -1438,9 +1548,12 @@
           "target_m",
           "deviation_m",
           "bounds",
-          "walking_duration_s",
+          "activity",
+          "profile",
+          "duration_s",
           "surfaces",
           "unknown_surface_share",
+          "access",
           "limitations",
           "attribution",
           "provider_engine",
