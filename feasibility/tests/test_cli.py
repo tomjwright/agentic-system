@@ -240,3 +240,18 @@ def test_missing_api_key_fails_before_any_request(
 
     assert exit_code == 2
     assert providers.requests == []
+
+
+def test_a_rejected_rerun_removes_the_earlier_route_files(
+    providers: RecordedProviders, data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = tmp_path / "out"
+    start = ["--start", "avenue south residence"]
+    run_route(providers, data_dir, out, monkeypatch, [*start, "--distance", "6"])
+    assert (out / "test-run.gpx").exists()
+
+    exit_code = run_route(providers, data_dir, out, monkeypatch, [*start, "--distance", "5"])
+
+    assert exit_code == 1
+    assert not (out / "test-run.gpx").exists()
+    assert not (out / "test-run.geojson").exists()

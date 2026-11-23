@@ -112,6 +112,7 @@ def run_case(args: argparse.Namespace, http: httpx.Client) -> int:
         restricted = load_restricted_ways(read_json(restricted_path))
 
     args.out.mkdir(parents=True, exist_ok=True)
+    remove_earlier_files(args.out, args.name)
     report_path = args.out / f"{args.name}.md"
     start = resolve_start(http, args.start, args.confirm)
     if start.place is None:
@@ -206,6 +207,14 @@ def attempt_summary(attempt: Attempt) -> str:
         return f"error: {attempt.error}"
     outcome = "accepted" if attempt.accepted else "; ".join(attempt.problems)
     return f"{attempt.route.distance_m / 1000:.2f} km, {outcome}"
+
+
+def remove_earlier_files(out: Path, name: str) -> None:
+    """A rerun under the same name must not leave the last run's route behind."""
+    earlier = [out / f"{name}.gpx", out / f"{name}.geojson"]
+    earlier.extend(out.glob(f"{name}.attempt-*.geojson"))
+    for path in earlier:
+        path.unlink(missing_ok=True)
 
 
 def write_route_files(out: Path, name: str, coordinates: list[list[float]]) -> None:
