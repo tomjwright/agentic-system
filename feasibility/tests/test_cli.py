@@ -279,3 +279,18 @@ def test_a_rerun_that_fails_midway_leaves_no_earlier_report(
         main(args, transport=httpx.MockTransport(time_out))
 
     assert not (out / "test-run.md").exists()
+
+
+def test_rerun_cleanup_reads_brackets_in_a_name_literally(
+    providers: RecordedProviders, data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "loop[1].attempt-9.geojson").write_text("{}")
+    (out / "loop1.attempt-9.geojson").write_text("{}")
+    name = ["--name", "loop[1]", "--start", "avenue south residence", "--distance", "6"]
+
+    run_route(providers, data_dir, out, monkeypatch, name)
+
+    assert not (out / "loop[1].attempt-9.geojson").exists()
+    assert (out / "loop1.attempt-9.geojson").exists()

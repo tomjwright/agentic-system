@@ -9,6 +9,7 @@ accepted, <name>.geojson and <name>.gpx with the same points.
 """
 
 import argparse
+import glob
 import json
 import os
 import sys
@@ -213,7 +214,7 @@ def remove_earlier_files(out: Path, name: str) -> None:
     """A rerun under the same name must not leave the last run's report or route behind,
     even if it stops before writing its own report."""
     earlier = [out / f"{name}.md", out / f"{name}.gpx", out / f"{name}.geojson"]
-    earlier.extend(out.glob(f"{name}.attempt-*.geojson"))
+    earlier.extend(out.glob(f"{glob.escape(name)}.attempt-*.geojson"))
     for path in earlier:
         path.unlink(missing_ok=True)
 
