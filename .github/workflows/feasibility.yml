@@ -25,7 +25,8 @@ jobs:
       - run: uv run mypy
       - run: uv run pytest
       - name: Audit dependencies for known vulnerabilities
-        run: uv export --frozen --no-hashes --no-emit-project | uv run pip-audit --strict -r /dev/stdin
+        # --disable-pip audits the hashed export as-is, so packages pip-audit itself needs (like pip) are not skipped.
+        run: uv export --frozen --no-emit-project | uv run pip-audit --strict --disable-pip -r /dev/stdin
 
   secrets-scan:
     runs-on: ubuntu-latest
