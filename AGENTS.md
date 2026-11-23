@@ -24,6 +24,9 @@ live in `tomjwright/home` `AGENTS.md`; this file adds the rules for this repo.
   `httpx.MockTransport` (`feasibility/tests/test_cli.py`, `api/tests/recorded_onemap.py`).
 - `web/openapi.json` and `web/src/api-types.ts` are generated: after changing
   `api/src/route_api/contracts.py` or a route, regenerate both (commands in Checks).
+- `api/` and `feasibility/` pin Python 3.12 (`.python-version`; CI sets the same in
+  setup-uv). Other versions word some HTTP statuses differently, so the generated
+  `web/openapi.json` would drift.
 - Live runs are manual and bounded: `feasibility/scripts/run_live_cases.sh` makes at
   most 32 HeiGIT requests (free plan: 2000 directions a day, 40 a minute).
 - Downloaded datasets go in `feasibility/data/` (git-ignored).
