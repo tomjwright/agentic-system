@@ -113,6 +113,7 @@ def test_trunk_roads_on_the_route_are_disclosed(clean_engine: Engine) -> None:
     disclosure = [line for line in route["limitations"] if "trunk roads" in line]
     assert len(disclosure) == 1
     assert trunk[0] in disclosure[0]
+    assert "It rides 46 m on trunk roads (West Coast Highway)." in disclosure[0]
 
 
 def test_unknown_surface_and_access_are_unknown_never_verified(clean_engine: Engine) -> None:
