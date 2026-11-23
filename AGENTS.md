@@ -7,28 +7,34 @@ live in `tomjwright/home` `AGENTS.md`; this file adds the rules for this repo.
 
 - `feasibility/`: the issue #2 feasibility experiment (uv project). Real HeiGIT,
   OneMap and NParks data, no agent or framework. Results in `feasibility/EVIDENCE.md`.
-- `api/`: FastAPI backend (uv project): OneMap place search, start confirmation and
-  owner-scoped route requests in PostgreSQL (SQLAlchemy, Alembic). See `api/README.md`.
+- `api/`: FastAPI backend (uv project): OneMap place search, start confirmation,
+  owner-scoped route requests, and running-loop generation through HeiGIT with GPX
+  export, in PostgreSQL (SQLAlchemy, Alembic). See `api/README.md`.
 - `web/`: Next.js page with a Leaflet map on the OneMap basemap. Talks only to `api/`.
 
 ## Rules
 
-- `HEIGIT_API_KEY` stays server side: only `route_feasibility/heigit.py` reads it, only
-  as the `Authorization` header to `api.heigit.org`. Never print, log, commit or record
-  it; recorded fixtures are response bodies only.
+- `HEIGIT_API_KEY` stays server side: only `route_feasibility/heigit.py` and
+  `api/src/route_api/heigit.py` read it, only as the `Authorization` header to the fixed
+  `api.heigit.org` directions URL. Never print, log, commit or record it; recorded
+  fixtures are response bodies only.
+- A generated route is never edited: the selected candidate's stored geometry is what the
+  page draws and what the GPX contains. Invalid candidates are rejected, not repaired.
 - `ONEMAP_API_TOKEN` stays server side the same way: only `api/src/route_api/onemap.py`
   reads it, only as the `Authorization` header to OneMap's search endpoint. The browser
   never calls a OneMap API; it only loads OneMap basemap tiles, which need no token.
 - Never pick a place for the user: every OneMap match is listed and the user confirms one.
 - Tests never call a live provider. They replay recorded real responses through
-  `httpx.MockTransport` (`feasibility/tests/test_cli.py`, `api/tests/recorded_onemap.py`).
+  `httpx.MockTransport` (`feasibility/tests/test_cli.py`, `api/tests/recorded_onemap.py`,
+  `api/tests/recorded_heigit.py`).
 - `web/openapi.json` and `web/src/api-types.ts` are generated: after changing
   `api/src/route_api/contracts.py` or a route, regenerate both (commands in Checks).
 - `api/` and `feasibility/` pin Python 3.12 (`.python-version`; CI sets the same in
   setup-uv). Other versions word some HTTP statuses differently, so the generated
   `web/openapi.json` would drift.
 - Live runs are manual and bounded: `feasibility/scripts/run_live_cases.sh` makes at
-  most 32 HeiGIT requests (free plan: 2000 directions a day, 40 a minute).
+  most 32 HeiGIT requests and `api/scripts/record_heigit.py` at most 5 per scenario
+  (free plan: 2000 directions a day, 40 a minute).
 - Downloaded datasets go in `feasibility/data/` (git-ignored).
 
 ## Checks
@@ -58,5 +64,6 @@ npm ci
 git diff --exit-code -- openapi.json src/api-types.ts
 npm run lint
 npm audit --audit-level=moderate
-npm run e2e        # builds the page, starts the api with recorded OneMap, desktop + mobile
+npm run e2e        # builds the page, starts the api with recorded OneMap and HeiGIT, desktop + mobile
+! grep -rl -e "api.heigit.org" -e "HEIGIT_API_KEY" -e "ONEMAP_API_TOKEN" .next/static
 ```
