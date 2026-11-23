@@ -21,7 +21,12 @@ import httpx
 from route_feasibility import datasets, heigit
 from route_feasibility.checks import Boundary, parse_target, repeated_share, validate_loop
 from route_feasibility.gpx import route_to_gpx
-from route_feasibility.green import Track, find_green_sections, load_tracks
+from route_feasibility.green import (
+    Track,
+    contiguous_allowed_runs,
+    find_green_sections,
+    load_tracks,
+)
 from route_feasibility.onemap import resolve_start
 from route_feasibility.report import Attempt, build_report
 from route_feasibility.restrictions import RestrictedWay, inspect_route, load_restricted_ways
@@ -160,7 +165,7 @@ def measure(
 ) -> Attempt:
     attempt = Attempt(
         number=0, candidate="", route=None, error=None, accepted=False, problems=[],
-        green=[], restrictions=None, repeated_share=None,
+        green=[], longest_run=None, restrictions=None, repeated_share=None,
     )  # fmt: skip
     try:
         route = heigit.directions(http, api_key, args.activity, body)
@@ -173,6 +178,9 @@ def measure(
     attempt.problems += validate_loop(route.coordinates, boundary)
     attempt.repeated_share = repeated_share(route.coordinates)
     attempt.green = find_green_sections(route.coordinates, tracks)
+    for run in contiguous_allowed_runs(route.coordinates, tracks):
+        if attempt.longest_run is None or run.length_m > attempt.longest_run.length_m:
+            attempt.longest_run = run
     has_allowed_green = any(section.counts_as_green_cycling for section in attempt.green)
     if args.require_green and not has_allowed_green:
         attempt.problems.append("no green section where NParks allows cycling")

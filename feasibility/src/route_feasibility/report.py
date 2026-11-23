@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from route_feasibility.checks import DistanceTarget
-from route_feasibility.green import GreenSection
+from route_feasibility.green import GreenRun, GreenSection
 from route_feasibility.heigit import MeasuredRoute
 from route_feasibility.onemap import StartResolution
 from route_feasibility.restrictions import RestrictionContact
@@ -20,6 +20,7 @@ class Attempt(BaseModel):
     accepted: bool
     problems: list[str]
     green: list[GreenSection]
+    longest_run: GreenRun | None
     restrictions: list[RestrictionContact] | None
     repeated_share: float | None
 
@@ -55,13 +56,14 @@ def start_section(start: StartResolution) -> list[str]:
 
 def attempts_table(attempts: list[Attempt]) -> list[str]:
     lines = [
-        "| attempt | candidate | km | outcome | problems | allowed green km | repeated |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| attempt | candidate | km | outcome | problems | allowed green km "
+        "| longest green km | repeated |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for attempt in attempts:
         if attempt.route is None:
             lines.append(
-                f"| {attempt.number} | {attempt.candidate} | - | error | {attempt.error} | | |"
+                f"| {attempt.number} | {attempt.candidate} | - | error | {attempt.error} | | | |"
             )
             continue
         if attempt.accepted:
@@ -73,9 +75,10 @@ def attempts_table(attempts: list[Attempt]) -> list[str]:
         problems = "; ".join(p for p in attempt.problems if p != "outside target") or "none"
         allowed = sum(s.length_m for s in attempt.green if s.counts_as_green_cycling)
         repeated = f"{attempt.repeated_share:.0%}" if attempt.repeated_share is not None else ""
+        longest = km(attempt.longest_run.length_m) if attempt.longest_run is not None else "0.00"
         lines.append(
             f"| {attempt.number} | {attempt.candidate} | {km(attempt.route.distance_m)} "
-            f"| {outcome} | {problems} | {km(allowed)} | {repeated} |"
+            f"| {outcome} | {problems} | {km(allowed)} | {longest} | {repeated} |"
         )
     return [*lines, ""]
 
@@ -98,6 +101,17 @@ def green_table(sections: list[GreenSection]) -> list[str]:
     if not sections:
         lines.append("| none | | | | |")
     return [*lines, ""]
+
+
+def longest_run_lines(run: GreenRun | None) -> list[str]:
+    if run is None:
+        return ["Longest contiguous cycling-allowed green: none", ""]
+    return [
+        f"Longest contiguous cycling-allowed green: {km(run.length_m)} km "
+        f"(plus {run.bridged_m:.0f} m of junctions and crossings bridged; "
+        f"{', '.join(run.parks)}; NParks track IDs: {', '.join(run.track_ids)})",
+        "",
+    ]
 
 
 def restrictions_table(contacts: list[RestrictionContact] | None) -> list[str]:
@@ -145,6 +159,7 @@ def attempt_section(attempt: Attempt, name: str, selected: bool) -> list[str]:
     lines += metres_table("Way types", route.way_types_m, route.distance_m)
     lines += metres_table("Way categories", route.way_categories_m, route.distance_m)
     lines += green_table(attempt.green)
+    lines += longest_run_lines(attempt.longest_run)
     lines += restrictions_table(attempt.restrictions)
     return lines
 

@@ -188,6 +188,7 @@ def test_green_sections_report_cycling_permission_from_nparks(
     assert "no green section where NParks allows cycling" in report
     assert "Selected: attempt 2, 5.53 km" in report
     assert "| AYE (ALEXANDRA RD TO SOUTH BUONA VISTA RD) | allowed | 333 | yes |" in report
+    assert "Longest contiguous cycling-allowed green: 0.33 km" in report
 
 
 def test_restricted_roads_separate_running_beside_from_running_on(
