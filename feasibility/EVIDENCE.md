@@ -13,8 +13,8 @@ The core journey works on real data. The retry Tom asked for ("Go, but first ret
 core loop through one longer cycling-allowed green track") gives a **68.25 km
 road-cycling loop from Avenue South Residence** through East Coast Park and Coastal
 Park Connector. It closes, stays in Singapore, runs on no expressway, slip road, road
-tunnel or `bicycle=no` way, and has **one unbroken 13.88 km stretch on NParks track
-where `ALLOW_CYCLING=Y`** (East Coast Park Area B to Coastal PC), 21.91 km of such track
+tunnel or `bicycle=no` way, and has **one unbroken 10.71 km stretch on NParks track
+where `ALLOW_CYCLING=Y`** (East Coast Park Areas B to G), 21.91 km of such track
 in total ([report](evidence/core-ride-60-70km-green-track.md),
 [GPX](evidence/core-ride-60-70km-green-track.gpx); details in
 [Core retry](#core-retry-through-one-long-green-track)). The first core loop (64.46 km,
@@ -137,7 +137,9 @@ repeat; 1,064 duplicate groups are identical apart from `OBJECTID`.
 - Longest contiguous green: the same 10 m samples, on any `ALLOW_CYCLING=Y` track,
   joined across park names (NParks names East Coast Park by area A to H). A gap of up
   to 50 m (a junction, or a crossing where a not-allowed path lies nearer) is bridged
-  and reported separately, not counted as green; a longer gap ends the stretch.
+  and reported separately, not counted as green; a longer gap ends the stretch. The
+  gap runs from the last sample on an allowed track to the next one, including the
+  step back onto the track.
 - Distance: a single target accepts ±10% (10 km is 9-11 km); a range such as 60-70
   is exact, never widened. Bad, zero, negative and reversed targets are rejected.
 - Loop: ends within 30 m of the start; all points finite; inside the planning-area
@@ -180,7 +182,7 @@ noted. "Green" is NParks track with `ALLOW_CYCLING=Y` on the selected route.
 | case | start (OneMap) | target | attempts | result | km | green km | repeated | unknown surface | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | core ride | Avenue South Residence | 60-70 | seeds 1-3 | accepted, seed 3 | 64.46 | 4.13 | 2% | 3% | seeds 1, 2: HeiGIT 500/404 at the start; 108 m dead-end spur at Tanah Merah; longest green 0.80 km |
-| core ride, green-track retry | Avenue South Residence | 60-70 | 1 via loop (18 points) | accepted | 68.25 | 21.91 | 6% | 4% | longest green 13.88 km (East Coast Park to Coastal PC); 1.11 km on trunk roads; after 2 probes |
+| core ride, green-track retry | Avenue South Residence | 60-70 | 1 via loop (18 points) | accepted | 68.25 | 21.91 | 6% | 4% | longest green 10.71 km (East Coast Park Areas B-G); 1.11 km on trunk roads; after 2 probes |
 | run | Avenue South Residence | 5 | seeds 1-3 | accepted, seed 3 | 4.67 | 0 | 2% | 58% | 6.50, 5.53 missed |
 | run | Avenue South Residence | 10 | seeds 1-3 | accepted, seed 3 | 9.41 | 0 | 1% | 48% | 17.35, 14.46 missed |
 | run | East Coast Park (confirmed of 4 names) | 5 | seeds 1-3 | accepted, seed 3 | 5.03 | 0.24 | 3% | 11% | 6.09, 5.57 missed |
@@ -238,9 +240,9 @@ to bring the loop back. 3 HeiGIT requests, 2 s apart:
 
 | request | via points | km | outcome | longest green km |
 | --- | --- | --- | --- | --- |
-| probe 1 | 25 on the track every ~1 km, 3 inland | 82.66 | outside target | 7.04 (Coastal PC) |
-| probe 2 | 17 on the track, 1 inland | 68.25 | accepted | 13.88 |
-| recorded | same as probe 2 | 68.25 | accepted | 13.88 |
+| probe 1 | 25 on the track every ~1 km, 3 inland | 82.66 | outside target | 7.04 (Coastal PC), earlier gap rule |
+| probe 2 | 17 on the track, 1 inland | 68.25 | accepted | 10.71 |
+| recorded | same as probe 2 | 68.25 | accepted | 10.71 |
 
 Probe 1 was too long: it had more points around Changi Beach and three inland return
 points, and its longest green stretch was 7.04 km. Probe 2 dropped 8 Changi points and
@@ -255,19 +257,25 @@ same route as probe 2.
 | on expressway, slip road, road tunnel, `bicycle=no` | 0 m | 0 m |
 | on trunk roads (disclosed) | 0 km | 1.11 km (Nicoll Highway 900 m, an unnamed trunk 206 m) |
 | `ALLOW_CYCLING=Y` track | 4.13 km in 12 sections | 21.91 km in 31 sections |
-| longest contiguous green | 0.80 km (Bedok PC) | **13.88 km** (East Coast Park Areas B-H, Coastal PC) |
+| longest contiguous green | 0.80 km (Bedok PC) | **10.71 km** (East Coast Park Areas B-G) |
 | repeated ground | 2% | 6% |
 | unknown surface | 3% | 4% |
 | way type cycleway | 4% | 29% |
 | duration estimate | 183 min | 304 min |
 
-The 13.88 km stretch bridges 206 m of junctions and crossings in total (each gap
-50 m or less) and runs on 49 NParks track IDs; the main ones are
-`5E53B02ED6171F45` (Area E), `310A6C9D513D0416` and `AE927B4D9B9BFFDF` (Area G),
-`817727C0AE29B96B` (Area B) and `8785033D32609922` (Coastal PC). The full list is in the
-report.
+The 10.71 km stretch bridges 199 m of junctions and crossings in total (each gap
+50 m or less) and runs on 45 NParks track IDs; the main ones are
+`5E53B02ED6171F45` (Area E), `310A6C9D513D0416` and `AE927B4D9B9BFFDF` (Area G) and
+`817727C0AE29B96B` (Area B). The full list is in the report. A gap just over 50 m
+after Area G ends it; the route's next stretches are 3.02 km (Area H to Coastal PC) and
+4.46 km (Coastal PC).
 
-What still falls short: the longest stretch (13.88 km) is less than the 17.6 km span of
+Correction after review: the first version of this evidence reported 13.88 km. It
+counted the step back onto a track as green and left it out of the gap, so gaps of up
+to about 60 m were bridged. Tom chose the strict 50 m rule, which gives 10.71 km. The
+probe 1 figure was measured with the earlier rule and not rerun.
+
+What still falls short: the longest stretch (10.71 km) is less than the 17.6 km span of
 the corridor, because the route leaves the NParks track in places for nearby roads,
 which `cycling-road` prefers; those parts do not count as green. HeiGIT also labels
 1.25 km of the route `construction`. The duration estimate is long
