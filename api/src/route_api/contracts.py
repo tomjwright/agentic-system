@@ -194,7 +194,12 @@ class RestrictedRoad(BaseModel):
     """One OpenStreetMap road from the restriction check that the route comes near."""
 
     kind: Literal[
-        "expressway", "expressway slip road", "road tunnel", "bicycle=no", "major arterial (trunk)"
+        "expressway",
+        "expressway slip road",
+        "road tunnel",
+        "bicycle=no",
+        "major arterial (trunk)",
+        "minor road tunnel",
     ]
     name: str
     osm_way_ids: list[int]

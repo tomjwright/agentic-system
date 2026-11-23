@@ -133,6 +133,22 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccessCheck */
+        AccessCheck: {
+            /**
+             * Status
+             * @description Access anywhere else on the route is unknown, never verified
+             * @enum {string}
+             */
+            status: "not_checked" | "no_prohibited_road_found";
+            /**
+             * Source
+             * @description The OpenStreetMap extract the check used
+             */
+            source: string | null;
+            /** Roads */
+            roads: components["schemas"]["RestrictedRoad"][];
+        };
         /** Candidate */
         Candidate: {
             /**
@@ -216,7 +232,7 @@ export interface components {
              * Code
              * @enum {string}
              */
-            code: "invalid_request" | "outside_singapore" | "candidate_not_found" | "not_found" | "provider_not_configured" | "provider_unavailable" | "provider_rejected" | "provider_response_invalid" | "provider_quota_exhausted" | "activity_not_supported" | "operation_conflict" | "no_route_selected" | "generation_interrupted";
+            code: "invalid_request" | "outside_singapore" | "candidate_not_found" | "not_found" | "provider_not_configured" | "provider_unavailable" | "provider_rejected" | "provider_response_invalid" | "provider_quota_exhausted" | "operation_conflict" | "no_route_selected" | "generation_interrupted";
             /** Message */
             message: string;
         };
@@ -347,6 +363,36 @@ export interface components {
                 number
             ];
         };
+        /**
+         * RestrictedRoad
+         * @description One OpenStreetMap road from the restriction check that the route comes near.
+         */
+        RestrictedRoad: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "expressway" | "expressway slip road" | "road tunnel" | "bicycle=no" | "major arterial (trunk)" | "minor road tunnel";
+            /** Name */
+            name: string;
+            /** Osm Way Ids */
+            osm_way_ids: number[];
+            /**
+             * Near M
+             * @description Route length within 8 m: crossings, bridges, paths beside
+             */
+            near_m: number;
+            /**
+             * On M
+             * @description Route length running along the road itself
+             */
+            on_m: number;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "on_prohibited_road" | "crossing_or_beside" | "on_disclosed_road";
+        };
         /** RouteCandidate */
         RouteCandidate: {
             /** Position */
@@ -441,10 +487,20 @@ export interface components {
             deviation_m: number;
             bounds: components["schemas"]["DistanceBoundsOut"];
             /**
-             * Walking Duration S
-             * @description HeiGIT's foot-walking time. It is not a running time.
+             * Activity
+             * @enum {string}
              */
-            walking_duration_s: number;
+            activity: "running" | "road_cycling";
+            /**
+             * Profile
+             * @description HeiGIT profile: foot-walking or cycling-road
+             */
+            profile: string;
+            /**
+             * Duration S
+             * @description HeiGIT's time for the profile. For running it is a walking time.
+             */
+            duration_s: number;
             /** Surfaces */
             surfaces: components["schemas"]["SurfaceDistance"][];
             /**
@@ -452,6 +508,7 @@ export interface components {
              * @description Share of the distance with no known surface
              */
             unknown_surface_share: number;
+            access: components["schemas"]["AccessCheck"];
             /** Limitations */
             limitations: string[];
             /** Attribution */

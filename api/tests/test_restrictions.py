@@ -21,6 +21,15 @@ KEPPEL_ROAD = [
     (103.8321507, 1.2725055),
     (103.832255, 1.2725698),
 ]
+# Sime Underpass (tertiary, tunnel=yes), OSM way 654642353: its first four nodes.
+SIME_UNDERPASS = [
+    (103.818641, 1.3354437),
+    (103.8186729, 1.3353402),
+    (103.8187247, 1.3352338),
+    (103.8188163, 1.3351153),
+]
+# A car park ramp (service, tunnel=yes), OSM way 146981349: its first three nodes.
+CAR_PARK_RAMP = [(103.7671863, 1.2941617), (103.7672108, 1.2941463), (103.7672425, 1.2941524)]
 # A straight line over the CTE between its first two nodes, about 30 m either side.
 OVER_CTE = [(103.8284650, 1.2786540), (103.8289995, 1.2784136)]
 
@@ -72,3 +81,16 @@ def test_a_route_away_from_restricted_roads_touches_none(ways: RestrictedWays) -
     route = [(103.8291052, 1.2766295), (103.8293, 1.2768)]
 
     assert check_route(route, ["", ""], ways) == []
+
+
+def test_riding_through_a_minor_road_tunnel_is_legal_but_disclosed(ways: RestrictedWays) -> None:
+    roads = check_route(SIME_UNDERPASS, ["Sime Underpass"] * len(SIME_UNDERPASS), ways)
+
+    [road] = roads
+    assert road.kind == "minor road tunnel"
+    assert road.outcome == "on_disclosed_road"
+    assert 654642353 in road.osm_way_ids
+
+
+def test_a_car_park_ramp_is_not_a_road_tunnel(ways: RestrictedWays) -> None:
+    assert check_route(CAR_PARK_RAMP, ["", "", ""], ways) == []
