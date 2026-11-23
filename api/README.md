@@ -1,8 +1,8 @@
 # route-api
 
 Backend for the Singapore route creator. Issue #10 resolves and confirms a route's
-starting place; issue #3 generates, inspects and exports a running loop from it. There
-are no cycling routes or model calls yet.
+starting place; issue #3 generates, inspects and exports a running loop from it and
+issue #4 a road-cycling loop. There are no model calls.
 
 1. `POST /api/places/search` sends the query to OneMap and lists every match on Singapore
    land (`no_match`, `single_match` or `multiple_matches`). It never chooses one: the
@@ -13,30 +13,35 @@ are no cycling routes or model calls yet.
    `source_id` and retrieval time) or a map point. Points off Singapore land are refused.
 3. `GET /api/route-requests/{id}` returns a request only to its owner.
 4. `POST /api/route-requests/{id}/runs` with `operation_id` (a UUID the client makes) and
-   a distance generates a running loop and returns the finished run (HTTP 201). The
+   a distance generates a loop for the request's activity and returns the finished run
+   (HTTP 201). The
    distance is `{"kind": "target", "target_km": 5}` (any loop within 10% either side)
-   or `{"kind": "range", "min_km": 5, "max_km": 6}` (exact, no tolerance added), 1 to
-   50 km. Each run adds a new immutable revision of the request. Sending the same
+   or `{"kind": "range", "min_km": 5, "max_km": 6}` (exact, no tolerance added): 1 to
+   50 km running, 5 to 100 km road cycling (else HTTP 422 `distance_invalid`). Each run adds a new immutable revision of the request. Sending the same
    `operation_id` again returns the run already recorded (HTTP 200); with a different
-   distance it is HTTP 409 `operation_conflict`. Road cycling is HTTP 422
-   `activity_not_supported` for now.
+   distance it is HTTP 409 `operation_conflict`.
 5. `GET /api/runs/{id}` is the run: `status` (`generating`, `succeeded`, `no_route`,
    `failed`), the distance bounds, and every candidate with its seed or via points,
    requested length, measured distance and rejection reasons.
 6. `GET /api/runs/{id}/route` is the selected loop: its GeoJSON `LineString`, measured
-   distance and deviation from the target, HeiGIT's foot-walking time (not a running
-   time), surfaces with the unknown share, limitations and attribution.
+   distance and deviation from the target, the HeiGIT profile and its time (foot-walking
+   time is not a running time), surfaces with the unknown share, the restricted-road
+   check (`access`), limitations and attribution.
 7. `GET /api/runs/{id}/route.gpx` is the same stored geometry as GPX 1.1, point for point.
 
 ## How a loop is generated
 
-`generation.py` asks HeiGIT `foot-walking` for at most 5 candidates, one at a time,
+`generation.py` asks HeiGIT (`foot-walking` for running, `cycling-road` for road
+cycling, both avoiding ferries, cycling also steps) for at most 5 candidates, one at a time,
 2 s apart: round trips with seeds 1, 2, 3, ... and the requested length corrected by
-the last measured length; after 2 failed round trips it switches to a loop through
+the last measured length (never over HeiGIT's 100 km round-trip limit); after 2 failed round trips it switches to a loop through
 two via points placed inland of the start (round trips from the coast can cross the
-sea). `route_selection.py` rejects any candidate that is not closed (30 m), starts more
+sea); a via loop that returns keeps its bearing for the corrected length, one that fails
+turns. Cycling via points may snap up to 1 km to a road. `route_selection.py` rejects any candidate that is not closed (30 m), starts more
 than 200 m from the confirmed start, leaves Singapore (50 m), disagrees with HeiGIT's
-own distance by over 10%, or whose measured length is outside the bounds. The accepted
+own distance by over 10%, or whose measured length is outside the bounds. A cycling
+candidate is also rejected if it rides along an expressway, expressway slip road, road
+tunnel or `bicycle=no` way (see below). The accepted
 one closest to the target wins; if none, the run is `no_route` with every reason.
 Nothing is ever moved, trimmed or rerouted to pass.
 
@@ -92,22 +97,47 @@ To check when the current token expires without printing it:
 python3 -c "import base64,json,os,datetime; p=os.environ['ONEMAP_API_TOKEN'].split('.')[1]; print(datetime.datetime.fromtimestamp(json.loads(base64.urlsafe_b64decode(p+'==')).get('exp'), datetime.UTC))"
 ```
 
+## Restricted roads (cycling)
+
+HeiGIT has no usable Singapore road access data, so cycling loops are checked against
+`src/route_api/restricted_ways.geojson.gz`: the OpenStreetMap expressways, slip roads,
+road tunnels, `bicycle=no` ways and trunk roads, with the extract name, OSM timestamp
+and licence (© OpenStreetMap contributors, ODbL 1.0) in its `source`. `restrictions.py`
+reuses the #2 feasibility check (`route_feasibility.restrictions`, a path dependency):
+a stretch counts as riding on a road only when both ends and the midpoint of a route
+edge are within 1.5 m of it; anything else within 8 m is a crossing or passing beside,
+which is allowed. Trunk roads and tunnels on minor roads (tertiary, residential,
+unclassified and slip roads) are legal and are disclosed in the limitations, never
+rejected; car park and other service tunnels are ignored. Access and surface everywhere
+else stay unknown, never "verified".
+
+Refresh it from a newer Geofabrik/BBBike Singapore `.osm.pbf` (from `feasibility/`):
+
+```bash
+uv run --with osmium python scripts/extract_restricted_ways.py Singapore.osm.pbf data/
+gzip -9n -c data/restricted_ways.geojson > ../api/src/route_api/restricted_ways.geojson.gz
+```
+
+then rerun the API tests; route fixtures near changed roads may need re-recording.
+
 ## Recording HeiGIT responses
 
 `scripts/record_heigit.py` runs one scenario against live HeiGIT (at most 5 requests,
 2 s apart), saves each successful response body under `tests/fixtures/` and lists the
-request in `tests/fixtures/heigit_recordings.json`. Failure bodies are not saved.
+request and profile in `tests/fixtures/heigit_recordings.json`. Failure bodies are not
+saved. Requests already listed, failures included, are replayed instead of sent.
 
 ```bash
-HEIGIT_API_KEY=... uv run python scripts/record_heigit.py NAME LON LAT DISTANCE_JSON
+HEIGIT_API_KEY=... uv run python scripts/record_heigit.py NAME ACTIVITY LON LAT DISTANCE_JSON
 ```
 
 ## Handoff to the next slices
 
-- Cycling (#4): add the `cycling-road` profile in `heigit.py` and its own limits in
-  `route_selection.py`; runs, candidates, selection, the GPX export and the page's run
-  panel are activity-neutral apart from the `activity_not_supported` check in `main.py`
-  and the walking-time wording.
+- Both activities share runs, candidates, selection, the GPX export and the page's run
+  panel; per-activity values are `PROFILES` and `AVOID_FEATURES` in `heigit.py` and
+  `DISTANCE_LIMITS_KM` in `route_selection.py` (mirrored in the page's `LIMITS_KM`).
+- Live cycling demos from Avenue South Residence (OSM snapshot 2026-11-21): 20 km,
+  50 km and 60-70 km are recorded as the `avenue_south_ride_*` fixtures.
 
 - Route generation reads `route_requests`: `activity`, and the start as `start_lon`,
   `start_lat` (always on Singapore land) with its source.
