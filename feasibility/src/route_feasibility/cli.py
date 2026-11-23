@@ -210,8 +210,9 @@ def attempt_summary(attempt: Attempt) -> str:
 
 
 def remove_earlier_files(out: Path, name: str) -> None:
-    """A rerun under the same name must not leave the last run's route behind."""
-    earlier = [out / f"{name}.gpx", out / f"{name}.geojson"]
+    """A rerun under the same name must not leave the last run's report or route behind,
+    even if it stops before writing its own report."""
+    earlier = [out / f"{name}.md", out / f"{name}.gpx", out / f"{name}.geojson"]
     earlier.extend(out.glob(f"{name}.attempt-*.geojson"))
     for path in earlier:
         path.unlink(missing_ok=True)

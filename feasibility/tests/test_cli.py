@@ -255,3 +255,27 @@ def test_a_rejected_rerun_removes_the_earlier_route_files(
     assert exit_code == 1
     assert not (out / "test-run.gpx").exists()
     assert not (out / "test-run.geojson").exists()
+
+
+def test_a_rerun_that_fails_midway_leaves_no_earlier_report(
+    providers: RecordedProviders, data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = tmp_path / "out"
+    run_route(
+        providers,
+        data_dir,
+        out,
+        monkeypatch,
+        ["--start", "avenue south residence", "--distance", "6"],
+    )
+    assert (out / "test-run.md").exists()
+
+    def time_out(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("OneMap timed out", request=request)
+
+    args = ["route", "--name", "test-run", "--activity", "run", "--start", "avenue south residence"]
+    args += ["--distance", "6", "--data-dir", str(data_dir), "--out", str(out)]
+    with pytest.raises(httpx.ReadTimeout):
+        main(args, transport=httpx.MockTransport(time_out))
+
+    assert not (out / "test-run.md").exists()
