@@ -1,4 +1,4 @@
-name: feasibility
+name: ci
 
 # Deterministic checks only: recorded provider responses, no secrets, no live calls.
 on:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  feasibility:
     runs-on: ubuntu-latest
     defaults:
       run:
