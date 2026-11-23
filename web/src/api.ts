@@ -41,3 +41,31 @@ export function createRouteRequest(request: RouteRequestCreate): Promise<RouteRe
 export function getRouteRequest(id: string): Promise<RouteRequest> {
   return call(`/api/route-requests/${id}`, { method: "GET" });
 }
+
+export type Distance = components["schemas"]["RunCreate"]["distance"];
+export type GenerationRun = components["schemas"]["GenerationRun"];
+export type SelectedRoute = components["schemas"]["SelectedRoute"];
+
+// Sending the same operation ID again (after a lost response) returns the same run.
+export function startRun(
+  routeRequestId: string,
+  operationId: string,
+  distance: Distance,
+): Promise<GenerationRun> {
+  return call(`/api/route-requests/${routeRequestId}/runs`, {
+    method: "POST",
+    body: JSON.stringify({ operation_id: operationId, distance }),
+  });
+}
+
+export function getRun(runId: string): Promise<GenerationRun> {
+  return call(`/api/runs/${runId}`, { method: "GET" });
+}
+
+export function getSelectedRoute(runId: string): Promise<SelectedRoute> {
+  return call(`/api/runs/${runId}/route`, { method: "GET" });
+}
+
+export function gpxUrl(runId: string): string {
+  return `/api/runs/${runId}/route.gpx`;
+}
