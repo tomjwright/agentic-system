@@ -143,6 +143,29 @@ def test_retries_never_ask_heigit_for_a_round_trip_over_100_km(clean_engine: Eng
     assert max(lengths) == 100_000
 
 
+def test_a_capped_retry_that_overshoots_asks_for_less(clean_engine: Engine) -> None:
+    short_ride = json.loads((FIXTURES / "heigit_avenue_south_ride_20km_1.json").read_text())
+    long_ride = json.loads(json.dumps(short_ride))
+    geometry = long_ride["features"][0]["geometry"]
+    start = geometry["coordinates"][0]
+    for point in geometry["coordinates"]:
+        point[0] = start[0] + 6 * (point[0] - start[0])
+        point[1] = start[1] + 6 * (point[1] - start[1])
+    replies = [short_ride, long_ride, short_ride, short_ride, short_ride]
+    lengths = []
+
+    def short_then_long(request: httpx.Request) -> httpx.Response:
+        round_trip = json.loads(request.content)["options"].get("round_trip")
+        if round_trip is not None:
+            lengths.append(round_trip["length"])
+        return httpx.Response(200, json=replies[len(lengths) - 1])
+
+    cycling_run(clean_engine, short_then_long, {"kind": "target", "target_km": 100})
+
+    assert lengths[:2] == [100_000, 100_000]
+    assert lengths[2] < 100_000
+
+
 def test_unknown_surface_and_access_are_unknown_never_verified(clean_engine: Engine) -> None:
     run = cycling_run(clean_engine, recorded_response, TWENTY_KM)
     route = selected_route(clean_engine, run["id"])

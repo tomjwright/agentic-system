@@ -65,12 +65,13 @@ def generate(
     for _ in range(MAX_ATTEMPTS):
         if round_trip_failures < ROUND_TRIP_FAILURES_BEFORE_VIA:
             seed += 1
-            round_trip_m = min(length_m, MAX_ROUND_TRIP_M)
+            requested_m = min(length_m, MAX_ROUND_TRIP_M)
             attempt = Attempt(
-                method="round_trip", parameters={"length_m": round(round_trip_m), "seed": seed}
+                method="round_trip", parameters={"length_m": round(requested_m), "seed": seed}
             )
-            body = round_trip_body(activity, start, round_trip_m, seed)
+            body = round_trip_body(activity, start, requested_m, seed)
         else:
+            requested_m = length_m
             bearing = (inland_bearing(start) + VIA_TURNS[via_turn % len(VIA_TURNS)]) % 360
             attempt = Attempt(
                 method="via_loop", parameters={"length_m": round(length_m), "bearing": bearing}
@@ -110,7 +111,7 @@ def generate(
                 via_turn += 1
         measured_m = line_length_m(route.coordinates)
         if measured_m > 0:
-            corrected_m = length_m * bounds.target_m / measured_m
+            corrected_m = requested_m * bounds.target_m / measured_m
             length_m = min(max(corrected_m, bounds.target_m / 2), bounds.target_m * 1.5)
 
     return Generation(attempts=attempts, selection=select_route(start, bounds, attempts))
