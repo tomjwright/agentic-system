@@ -45,11 +45,11 @@ export default function StartMap({ point, onPick }: Props) {
       center={SINGAPORE_CENTRE}
       zoom={12}
       minZoom={11}
-      maxZoom={19}
+      maxZoom={18}
       maxBounds={TILE_BOUNDS}
       className="map"
     >
-      <TileLayer url={TILES} attribution={ATTRIBUTION} detectRetina />
+      <TileLayer url={TILES} attribution={ATTRIBUTION} maxZoom={19} detectRetina />
       <ClickToPick onPick={onPick} />
       {point && <ShowPoint point={point} />}
     </MapContainer>
