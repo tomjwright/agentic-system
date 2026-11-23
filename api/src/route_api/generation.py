@@ -35,7 +35,7 @@ GENERATOR_VERSIONS = {"running": "running-loop-1", "road_cycling": "road-cycling
 MAX_ATTEMPTS = 5
 # No new attempt starts after this, so a run (one slow attempt is up to about 63 s) ends
 # inside the 120 s Vercel allows a proxied request (docs/hosting.md).
-TIME_BUDGET_S = 45
+TIME_BUDGET_S = 30
 ROUND_TRIP_FAILURES_BEFORE_VIA = 2
 # A via loop through 3 points on a circle through the start is about 5.66 radii as the crow
 # flies; paths add roughly 30%.

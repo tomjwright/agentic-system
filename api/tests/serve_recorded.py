@@ -26,15 +26,17 @@ from tests.test_auth import github_user
 def main() -> None:
     configure_logging()
     recorded = httpx.Client(transport=httpx.MockTransport(recorded_response))
-    onemap = OneMap(recorded, token="recorded-responses")
+    # Synthetic credentials: the browser tests fail if any of them reaches the browser.
+    onemap = OneMap(recorded, token="synthetic-onemap-token-must-not-ship")
     engine = create_engine(os.environ["DATABASE_URL"])
     heigit_http = httpx.Client(transport=httpx.MockTransport(recorded_heigit.recorded_response))
-    heigit = Heigit(heigit_http, api_key="recorded-responses", request_gap_seconds=0)
+    heigit_key = "synthetic-heigit-key-must-not-ship"
+    heigit = Heigit(heigit_http, api_key=heigit_key, request_gap_seconds=0)
     app_origin = os.environ["APP_ORIGIN"]
     github = GitHubOAuth(
         httpx.Client(transport=github_user(TOM_GITHUB_ID)),
         client_id="recorded-client",
-        client_secret="recorded-secret",
+        client_secret="synthetic-github-secret-must-not-ship",
         callback_url=f"{app_origin}/api/auth/callback",
         allowed_ids={TOM_GITHUB_ID},
         authorize_url="/api/fake-github/authorize",

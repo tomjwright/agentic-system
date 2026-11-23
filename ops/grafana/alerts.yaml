@@ -1,0 +1,48 @@
+# Grafana-managed alert rules for the route API (docs/hosting.md#telemetry-and-alerts).
+# Import with Alerting > Alert rules > Import, or the provisioning API, once the free stack
+# exists. Datasource uids are the stack defaults; check them after import.
+#   outage: the Synthetic Monitoring HTTP check on /api/health has failed for 10 minutes
+#   errors: generate_route spans ended with a provider error code (more than 2 an hour)
+#   quota:  HeiGIT answered 429 / quota exhausted
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: route-api
+    folder: route-creator
+    interval: 5m
+    rules:
+      - uid: route-api-outage
+        title: Route API is down
+        condition: down
+        for: 10m
+        data:
+          - refId: down
+            datasourceUid: grafanacloud-prom
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              expr: max(probe_success{job="route-api-health"}) < 1
+        labels: { severity: page }
+      - uid: route-api-generation-errors
+        title: Loop generation is failing
+        condition: errors
+        for: 0m
+        data:
+          - refId: errors
+            datasourceUid: grafanacloud-traces
+            relativeTimeRange: { from: 3600, to: 0 }
+            model:
+              queryType: traceql
+              query: '{ name = "generate_route" && span.route.error_code != "none" } | count() > 2'
+        labels: { severity: warn }
+      - uid: route-api-heigit-quota
+        title: HeiGIT quota used up
+        condition: quota
+        for: 0m
+        data:
+          - refId: quota
+            datasourceUid: grafanacloud-traces
+            relativeTimeRange: { from: 3600, to: 0 }
+            model:
+              queryType: traceql
+              query: '{ name = "heigit.directions" && span.http.response.status_code = 429 } | count() > 0'
+        labels: { severity: warn }

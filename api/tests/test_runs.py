@@ -435,3 +435,25 @@ def test_a_finished_run_logs_its_outcome_without_the_start(
     assert finished[0]["status"] == "succeeded"
     assert finished[0]["attempts"] == 2
     assert "103.8" not in json.dumps(finished)
+
+
+def test_generation_stops_starting_requests_once_its_time_budget_is_spent(
+    clean_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Each clock reading is 31 s after the last, so the 30 s budget is spent after one try
+    # and the run still answers inside Vercel's 120 s rewrite limit.
+    readings = iter(range(0, 10_000, 31))
+
+    def clock() -> int:
+        return next(readings)
+
+    monkeypatch.setattr("route_api.generation.time.monotonic", clock)
+    heigit = CountingHeigit()
+    api = api_with_heigit(clean_engine, heigit)
+    request_id = confirm_start(api, AVENUE_SOUTH_BLOCK_11)
+
+    run = start_run(api, request_id, {"kind": "range", "min_km": 5.0, "max_km": 5.05}).json()
+
+    assert run["status"] == "no_route"
+    assert len(run["candidates"]) == 1
+    assert len(heigit.requests) == 1

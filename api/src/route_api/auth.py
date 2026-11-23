@@ -226,12 +226,12 @@ class Auth:
 
 
 def auth_from_env(engine: Engine) -> Auth:
-    """Reads APP_ORIGIN, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, OWNER_GITHUB_IDS (comma
-    separated numeric ids, Tom's by default), SMOKE_TOKEN_SHA256, REQUESTS_PER_MINUTE and
+    """Reads APP_ORIGIN and OWNER_GITHUB_IDS (comma separated numeric ids; both required),
+    GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SMOKE_TOKEN_SHA256, REQUESTS_PER_MINUTE and
     RUNS_PER_DAY."""
-    app_origin = os.environ.get("APP_ORIGIN", "http://127.0.0.1:3000")
+    app_origin = os.environ["APP_ORIGIN"]
     allowed_ids = set()
-    for part in os.environ.get("OWNER_GITHUB_IDS", "119127762").split(","):
+    for part in os.environ["OWNER_GITHUB_IDS"].split(","):
         if part.strip():
             allowed_ids.add(int(part))
     github = GitHubOAuth(

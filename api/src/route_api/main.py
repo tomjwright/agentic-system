@@ -61,6 +61,7 @@ from route_api.heigit import Heigit
 from route_api.logs import configure_logging, log_event
 from route_api.onemap import OneMap, ProviderError
 from route_api.restrictions import RestrictedWays, load_restricted_ways
+from route_api.retention import purge_expired
 from route_api.route_selection import DISTANCE_LIMITS_KM, distance_bounds, outside_activity_limits
 from route_api.runs import (
     find_operation,
@@ -451,6 +452,7 @@ def create_app(
                 generation = generate(heigit, activity, start, bounds, restricted_ways)
                 span.set_attribute("route.activity", activity)
                 span.set_attribute("route.attempts", len(generation.attempts))
+                span.set_attribute("route.error_code", generation.error_code or "none")
             with tracer.start_as_current_span("db.save_generation"):
                 save_generation(session, run, generation)
                 session.commit()
@@ -543,6 +545,7 @@ def app_from_env() -> FastAPI:
     heigit = Heigit(httpx.Client(), api_key=os.environ.get("HEIGIT_API_KEY"))
     # Neon suspends idle computes; pre-ping replaces connections it closed.
     engine = create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
+    purge_expired(engine)
     return create_app(
         onemap, engine, auth_from_env(engine), heigit=heigit, restricted_ways=load_restricted_ways()
     )

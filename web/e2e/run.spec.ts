@@ -29,7 +29,21 @@ async function confirmAvenueSouth(page: Page) {
   await expect(page.getByText("Start confirmed")).toBeVisible();
 }
 
+// Everything the browser sent or received, to prove no provider credential reaches it.
+let traffic: string[] = [];
+
+function watchTraffic(page: Page) {
+  traffic = [];
+  page.on("request", (request) => {
+    traffic.push(request.url(), JSON.stringify(request.headers()), request.postData() ?? "");
+  });
+  page.on("response", async (response) => {
+    traffic.push(JSON.stringify(await response.allHeaders()), await response.text().catch(() => ""));
+  });
+}
+
 test.beforeEach(async ({ page }) => {
+  watchTraffic(page);
   await stubUpstreams(page);
   await signIn(page);
   await confirmAvenueSouth(page);
@@ -60,6 +74,8 @@ test("generate a 5 km loop, inspect it and download the same path as GPX", async
     Number(match[1]),
   ]);
   expect(points).toEqual(route.geometry.coordinates);
+  expect(gpx).not.toContain("must-not-ship");
+  expect(traffic.join("\n")).not.toContain("must-not-ship");
 });
 
 test("an exact range no loop fits is reported with each rejection", async ({ page }) => {

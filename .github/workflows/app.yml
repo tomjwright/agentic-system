@@ -80,11 +80,13 @@ jobs:
         # A synthetic key in the build environment must not reach the bundle (checked below).
         env:
           HEIGIT_API_KEY: synthetic-heigit-key-must-not-ship
-        run: npm run e2e
+        run: npm run e2e 2>&1 | tee e2e.log
+      - name: No synthetic credential in the API logs
+        run: "! grep -e must-not-ship -e synthetic-heigit-key e2e.log"
       - name: No OneMap or HeiGIT call, token or key in the browser bundle
         run: |
           ! grep -rl -e "onemap.gov.sg/api" -e "ONEMAP_API_TOKEN" .next/static
-          ! grep -rl -e "api.heigit.org" -e "HEIGIT_API_KEY" -e "synthetic-heigit-key-must-not-ship" .next
+          ! grep -rl -e "api.heigit.org" -e "HEIGIT_API_KEY" -e "must-not-ship" .next
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

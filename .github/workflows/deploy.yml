@@ -1,0 +1,66 @@
+name: deploy
+
+# Promotes a main commit only after its required checks pass (route_api.promote, tested in
+# api/tests/test_promote.py). Secrets live in the "production" environment, which only the
+# main branch may use (docs/hosting.md#github-settings).
+on:
+  workflow_run:
+    workflows: [app]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: read
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      COMMIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.COMMIT_SHA }}
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install --global vercel@66.6.0
+      - name: Build and stage the page (not yet live)
+        id: stage
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          vercel build --prod --token="$VERCEL_TOKEN"
+          echo "url=$(vercel deploy --prebuilt --prod --skip-domain --token="$VERCEL_TOKEN")" >> "$GITHUB_OUTPUT"
+      - name: No provider key in the built page
+        run: |
+          ! grep -rl -e "api.heigit.org" -e "HEIGIT_API_KEY" -e "onemap.gov.sg/api" -e "ONEMAP_API_TOKEN" .vercel/output/static
+      - name: Promote, or roll back to the previous healthy release
+        working-directory: api
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REQUIRED_CHECKS: api,web,test,secrets-scan
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          SMOKE_TOKEN: ${{ secrets.SMOKE_TOKEN }}
+          STAGED_URL: ${{ steps.stage.outputs.url }}
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+        run: |
+          uv sync --frozen --no-dev
+          uv run --no-sync python -m route_api.promote
