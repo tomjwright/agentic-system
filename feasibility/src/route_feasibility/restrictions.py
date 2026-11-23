@@ -89,9 +89,16 @@ def contact_for(
     return contact
 
 
-def on_line(point: list[float], line: list[list[float]]) -> bool:
-    offsets = [point_to_segment_m(point, a, b) for a, b in itertools.pairwise(line)]
-    return min(offsets) <= ON_WAY_M
+def end_on(point: list[float], way: RestrictedWay, index: LineIndex[RestrictedWay]) -> bool:
+    """Whether a route vertex lies on `way`, or on the nearest road of the same kind.
+
+    The first covers junctions, where a different road's shared node can be as near.
+    """
+    offsets = [point_to_segment_m(point, a, b) for a, b in itertools.pairwise(way.line)]
+    if min(offsets) <= ON_WAY_M:
+        return True
+    nearest = index.nearest(point, ON_WAY_M)
+    return nearest is not None and nearest.kind == way.kind
 
 
 def inspect_route(
@@ -130,7 +137,7 @@ def inspect_route(
         way = index.nearest(middle, ON_WAY_M)
         if way is None:
             continue
-        if not on_line(a, way.line) or not on_line(b, way.line):
+        if not end_on(a, way, index) or not end_on(b, way, index):
             continue
         contact_for(found, way, step_names[vertex]).on_m += distance_m(a, b)
 
