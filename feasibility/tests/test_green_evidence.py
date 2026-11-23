@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from route_feasibility.green import find_green_sections, load_tracks
+from route_feasibility.green import contiguous_allowed_runs, find_green_sections, load_tracks
 
 # About 500 m of path due east along latitude 1.3000.
 TRACK_LINE = [[103.8000, 1.3000], [103.8045, 1.3000]]
@@ -90,3 +90,66 @@ def test_duplicates_that_disagree_on_cycling_become_unknown() -> None:
     tracks = load_tracks(nparks_tracks(track("Y", crc="DUP1"), track("N", crc="DUP1")))
 
     assert [t.cycling for t in tracks] == ["unknown"]
+
+
+# Paths that carry straight on east from TRACK_LINE: one 40 m, one 500 m after it.
+SHORT_TRACK_LINE = [[103.8045, 1.3000], [103.80486, 1.3000]]
+NEXT_TRACK_LINE = [[103.8045, 1.3000], [103.8090, 1.3000]]
+LAST_TRACK_LINE = [[103.80486, 1.3000], [103.80936, 1.3000]]
+ROUTE_ALONG_ALL_TRACKS = [[103.7990, 1.30001], [103.8100, 1.30001]]
+
+
+def track_on(line: list[list[float]], allow_cycling: str, crc: str, park: str) -> dict[str, Any]:
+    feature = track(allow_cycling, crc=crc, park=park)
+    feature["geometry"] = {"type": "LineString", "coordinates": line}
+    return feature
+
+
+def test_allowed_tracks_that_join_end_to_end_are_one_contiguous_run() -> None:
+    tracks = load_tracks(
+        nparks_tracks(
+            track("Y", crc="AREA_A", park="EAST COAST PARK AREA A"),
+            track_on(NEXT_TRACK_LINE, "Y", crc="AREA_B", park="EAST COAST PARK AREA B"),
+        )
+    )
+
+    runs = contiguous_allowed_runs(ROUTE_ALONG_ALL_TRACKS, tracks)
+
+    assert len(runs) == 1
+    run = runs[0]
+    assert run.parks == ["EAST COAST PARK AREA A", "EAST COAST PARK AREA B"]
+    assert run.track_ids == ["AREA_A", "AREA_B"]
+    assert run.bridged_m == 0
+    # Two 500 m tracks, give or take the 12 m matching distance at each end.
+    assert 970 <= run.length_m <= 1030
+
+
+def test_a_short_crossing_where_cycling_is_not_allowed_is_bridged() -> None:
+    tracks = load_tracks(
+        nparks_tracks(
+            track("Y", crc="AREA_A", park="EAST COAST PARK AREA A"),
+            track_on(SHORT_TRACK_LINE, "N", crc="NO_BIKES", park="EAST COAST PARK AREA A"),
+            track_on(LAST_TRACK_LINE, "Y", crc="AREA_B", park="EAST COAST PARK AREA B"),
+        )
+    )
+
+    runs = contiguous_allowed_runs(ROUTE_ALONG_ALL_TRACKS, tracks)
+
+    assert len(runs) == 1
+    run = runs[0]
+    assert run.track_ids == ["AREA_A", "AREA_B"]
+    # The 40 m path, less the ends that match the allowed tracks on either side.
+    assert 10 <= run.bridged_m <= 50
+
+
+def test_a_long_stretch_where_cycling_is_not_allowed_ends_the_run() -> None:
+    tracks = load_tracks(
+        nparks_tracks(
+            track("Y", crc="AREA_A", park="EAST COAST PARK AREA A"),
+            track_on(NEXT_TRACK_LINE, "N", crc="NO_BIKES", park="EAST COAST PARK AREA B"),
+        )
+    )
+
+    runs = contiguous_allowed_runs(ROUTE_ALONG_ALL_TRACKS, tracks)
+
+    assert [(r.parks, r.track_ids) for r in runs] == [(["EAST COAST PARK AREA A"], ["AREA_A"])]
