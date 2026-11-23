@@ -2,7 +2,8 @@
 
 A loop is rejected, with a reason a person can read, when it does not close, starts
 far from the confirmed start, leaves Singapore, has a provider distance that does not
-match its own geometry (a unit or order mistake), or is outside the distance bounds.
+match its own geometry (a unit or order mistake), is outside the distance bounds, or
+(road cycling) runs along an expressway, slip road, road tunnel or bicycle=no way.
 Geometry is never changed to make it pass.
 """
 
@@ -10,7 +11,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from route_api.contracts import DistanceRange, DistanceTarget
+from route_api.contracts import DistanceRange, DistanceTarget, RestrictedRoad
 from route_api.geography import (
     distance_m,
     distance_to_land_edge_m,
@@ -24,6 +25,7 @@ LOOP_CLOSURE_LIMIT_M = 30
 START_SNAP_LIMIT_M = 200
 COASTLINE_TOLERANCE_M = 50
 PROVIDER_DISTANCE_TOLERANCE = 0.10
+DISTANCE_LIMITS_KM = {"running": (1, 50), "road_cycling": (5, 100)}
 
 
 class DistanceBounds(BaseModel):
@@ -38,6 +40,7 @@ class Attempt(BaseModel):
     method: str = "round_trip"
     parameters: dict[str, Any] = {}
     route: ProviderRoute | None = None
+    restricted_roads: list[RestrictedRoad] | None = None  # None: not checked (running)
     problem: str | None = None
 
 
@@ -59,8 +62,18 @@ def distance_bounds(distance: DistanceTarget | DistanceRange) -> DistanceBounds:
     return DistanceBounds(min_m=min_m, max_m=max_m, target_m=(min_m + max_m) / 2)
 
 
+def outside_activity_limits(activity: str, distance: DistanceTarget | DistanceRange) -> bool:
+    lowest_km, highest_km = DISTANCE_LIMITS_KM[activity]
+    if isinstance(distance, DistanceTarget):
+        return not lowest_km <= distance.target_km <= highest_km
+    return distance.min_km < lowest_km or distance.max_km > highest_km
+
+
 def rejection_reasons(
-    start: tuple[float, float], bounds: DistanceBounds, route: ProviderRoute
+    start: tuple[float, float],
+    bounds: DistanceBounds,
+    route: ProviderRoute,
+    restricted_roads: list[RestrictedRoad] | None = None,
 ) -> list[str]:
     coordinates = route.coordinates
     if len(coordinates) < 2:
@@ -91,6 +104,10 @@ def rejection_reasons(
             f"{measured_m / 1000:.3f} km is outside"
             f" {bounds.min_m / 1000:.3f}-{bounds.max_m / 1000:.3f} km"
         )
+
+    for road in restricted_roads or []:
+        if road.outcome == "on_prohibited_road":
+            reasons.append(f"runs {road.on_m:.0f} m along {road.kind} {road.name}")
     return reasons
 
 
@@ -116,7 +133,7 @@ def select_route(
         if attempt.route is None:
             all_reasons.append([attempt.problem or "HeiGIT returned no route"])
             continue
-        reasons = rejection_reasons(start, bounds, attempt.route)
+        reasons = rejection_reasons(start, bounds, attempt.route, attempt.restricted_roads)
         all_reasons.append(reasons)
         if reasons:
             continue

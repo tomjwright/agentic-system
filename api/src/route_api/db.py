@@ -69,6 +69,7 @@ class GenerationRunRecord(Base):
     error_message: Mapped[str | None] = mapped_column(String(200))
     provider: Mapped[str] = mapped_column(String(20))
     profile: Mapped[str] = mapped_column(String(20))
+    restriction_data: Mapped[str | None] = mapped_column(String(200))
     generator_version: Mapped[str] = mapped_column(String(40))
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -91,8 +92,9 @@ class RouteCandidateRecord(Base):
     coordinates: Mapped[list[list[float]] | None] = mapped_column(JSONB)
     provider_distance_m: Mapped[float | None]
     measured_distance_m: Mapped[float | None]
-    walking_duration_s: Mapped[float | None]
+    duration_s: Mapped[float | None]
     surfaces_m: Mapped[dict[str, float] | None] = mapped_column(JSONB)
+    restricted_roads: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
     engine: Mapped[dict[str, str] | None] = mapped_column(JSONB)
     attribution: Mapped[str | None] = mapped_column(String(300))
 

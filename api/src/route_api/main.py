@@ -45,12 +45,14 @@ from route_api.gpx import route_to_gpx
 from route_api.heigit import Heigit
 from route_api.logs import configure_logging, log_event
 from route_api.onemap import OneMap, ProviderError
-from route_api.route_selection import distance_bounds
+from route_api.restrictions import RestrictedWays, load_restricted_ways
+from route_api.route_selection import DISTANCE_LIMITS_KM, distance_bounds, outside_activity_limits
 from route_api.runs import (
     find_operation,
     find_run,
     find_selected,
     new_run,
+    run_activity,
     save_generation,
     to_generation_run,
     to_selected_route,
@@ -58,6 +60,7 @@ from route_api.runs import (
 from route_api.telemetry import setup_tracing, tracer
 
 ID_PATTERN = r"^[A-Za-z0-9._-]{1,64}$"
+ACTIVITY_NAMES = {"running": "running", "road_cycling": "road cycling"}
 ERRORS: dict[int | str, dict[str, Any]] = {
     404: {"model": ErrorResponse},
     409: {"model": ErrorResponse},
@@ -120,7 +123,13 @@ def owned_run(session: Session, owner: str, run_id: uuid.UUID) -> GenerationRunR
     return run
 
 
-def create_app(onemap: OneMap, engine: Engine, local_owner: str, heigit: Heigit) -> FastAPI:
+def create_app(
+    onemap: OneMap,
+    engine: Engine,
+    local_owner: str,
+    heigit: Heigit,
+    restricted_ways: RestrictedWays,
+) -> FastAPI:
     app = FastAPI(title="Singapore route creator API", version="0.1.0")
 
     @app.middleware("http")
@@ -256,15 +265,30 @@ def create_app(onemap: OneMap, engine: Engine, local_owner: str, heigit: Heigit)
             if existing is not None:
                 response.status_code = 200
                 return same_operation(session, existing, route_request_id, body)
-            if route_request.activity != "running":
+            activity = route_request.activity
+            if outside_activity_limits(activity, body.distance):
+                lowest_km, highest_km = DISTANCE_LIMITS_KM[activity]
                 raise ApiError(
-                    422, "activity_not_supported", "Only running loops can be generated so far"
+                    422,
+                    "invalid_request",
+                    f"distance: {ACTIVITY_NAMES[activity]} loops are {lowest_km} to"
+                    f" {highest_km} km",
                 )
             if not heigit.configured:
                 raise ApiError(503, "provider_not_configured", "Route generation is not configured")
             start = (route_request.start_lon, route_request.start_lat)
+            restriction_data = None
+            if activity == "road_cycling":
+                restriction_data = restricted_ways.source
             run = new_run(
-                session, owner, route_request_id, body.operation_id, body.distance, bounds
+                session,
+                owner,
+                route_request_id,
+                activity,  # type: ignore[arg-type]
+                restriction_data,
+                body.operation_id,
+                body.distance,
+                bounds,
             )
             try:
                 with tracer.start_as_current_span("db.save_run"):
@@ -280,7 +304,8 @@ def create_app(onemap: OneMap, engine: Engine, local_owner: str, heigit: Heigit)
 
             started = time.monotonic()
             with tracer.start_as_current_span("generate_route") as span:
-                generation = generate(heigit, start, bounds)
+                generation = generate(heigit, activity, start, bounds, restricted_ways)
+                span.set_attribute("route.activity", activity)
                 span.set_attribute("route.attempts", len(generation.attempts))
             with tracer.start_as_current_span("db.save_generation"):
                 save_generation(session, run, generation)
@@ -288,14 +313,22 @@ def create_app(onemap: OneMap, engine: Engine, local_owner: str, heigit: Heigit)
             chosen = None
             if generation.selection is not None:
                 chosen = generation.selection.chosen
+            prohibited = 0
+            for attempt in generation.attempts:
+                for road in attempt.restricted_roads or []:
+                    if road.outcome == "on_prohibited_road":
+                        prohibited += 1
             log_event(
                 "generation_finished",
                 request_id=request.state.request_id,
                 run_id=str(run.id),
+                activity=activity,
+                profile=run.profile,
                 status=run.status,
                 error_code=run.error_code or "",
                 attempts=len(generation.attempts),
                 chosen=-1 if chosen is None else chosen,
+                prohibited_roads=prohibited,
                 duration_ms=round((time.monotonic() - started) * 1000),
             )
             return to_generation_run(session, run)
@@ -337,13 +370,14 @@ def create_app(onemap: OneMap, engine: Engine, local_owner: str, heigit: Heigit)
             if selected is None:
                 raise ApiError(409, "no_route_selected", "This run has no selected route")
             candidate = selected[1]
+            activity = run_activity(session, run)
             distance_km = (candidate.measured_distance_m or 0) / 1000
             gpx = route_to_gpx(
-                f"Running loop {distance_km:.2f} km",
+                f"{ACTIVITY_NAMES[activity].capitalize()} loop {distance_km:.2f} km",
                 candidate.coordinates or [],
                 candidate.attribution or "",
             )
-        filename = f"running-loop-{run_id}.gpx"
+        filename = f"{ACTIVITY_NAMES[activity].replace(' ', '-')}-loop-{run_id}.gpx"
         return Response(
             content=gpx,
             media_type="application/gpx+xml",
@@ -365,4 +399,6 @@ def app_from_env() -> FastAPI:
     heigit = Heigit(httpx.Client(), api_key=os.environ.get("HEIGIT_API_KEY"))
     engine = create_engine(os.environ["DATABASE_URL"])
     local_owner = os.environ.get("LOCAL_OWNER_ID", "local-owner")
-    return create_app(onemap, engine, local_owner=local_owner, heigit=heigit)
+    return create_app(
+        onemap, engine, local_owner, heigit=heigit, restricted_ways=load_restricted_ways()
+    )

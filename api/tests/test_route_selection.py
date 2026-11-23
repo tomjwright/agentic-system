@@ -149,7 +149,7 @@ def test_a_distance_in_the_wrong_unit_is_rejected() -> None:
     "distance",
     [
         {"kind": "target", "target_km": 0},
-        {"kind": "target", "target_km": 60},
+        {"kind": "target", "target_km": 101},
         {"kind": "range", "min_km": 8, "max_km": 6},
         {"kind": "range", "min_km": 5, "max_km": 5},
         {"kind": "range", "min_km": 0.5, "max_km": 5},

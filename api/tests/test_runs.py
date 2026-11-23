@@ -117,7 +117,7 @@ def test_the_selected_route_keeps_heigit_metres_and_longitude_latitude_order(
     summary = recorded["features"][0]["properties"]["summary"]
     assert route["distance_m"] == pytest.approx(summary["distance"], abs=5)
     assert route["deviation_m"] == pytest.approx(route["distance_m"] - 5000)
-    assert route["walking_duration_s"] == summary["duration"]
+    assert route["duration_s"] == summary["duration"]
     assert route["unknown_surface_share"] > 0
     assert any("foot-walking" in limitation for limitation in route["limitations"])
     assert any("surface is unknown" in limitation for limitation in route["limitations"])
@@ -345,16 +345,6 @@ def test_generation_without_a_key_is_unavailable(clean_engine: Engine) -> None:
 
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "provider_not_configured"
-
-
-def test_road_cycling_is_not_generated_in_this_version(clean_engine: Engine) -> None:
-    api = api_with_heigit(clean_engine, recorded_response)
-    request_id = confirm_start(api, AVENUE_SOUTH_BLOCK_11, activity="road_cycling")
-
-    response = start_run(api, request_id, {"kind": "target", "target_km": 20})
-
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "activity_not_supported"
 
 
 @pytest.mark.parametrize(
