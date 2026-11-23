@@ -1,0 +1,83 @@
+name: app
+
+# Deterministic checks for api/ and web/: recorded OneMap responses, no secrets, no live calls.
+on:
+  pull_request:
+  push:
+    branches: [main, "integration/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: routes_test
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/routes_test
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/routes_test
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run pytest
+      - name: Migrations apply, roll back and re-apply
+        run: uv run alembic upgrade head && uv run alembic downgrade base && uv run alembic upgrade head
+      - name: Audit dependencies for known vulnerabilities
+        run: uv export --frozen --no-hashes --no-emit-project | uv run pip-audit --strict -r /dev/stdin
+
+  web:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: routes_e2e
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: (cd ../api && uv sync --frozen)
+      - name: Browser types match the API's OpenAPI document
+        run: |
+          (cd ../api && uv run python -m route_api.openapi) > openapi.json
+          npm run types
+          git diff --exit-code -- openapi.json src/api-types.ts
+      - run: npm run lint
+      - name: Audit dependencies for known vulnerabilities
+        run: npm audit --audit-level=moderate
+      - run: npx playwright install --with-deps chromium
+      - name: API-to-browser tests (desktop and mobile)
+        run: npm run e2e
+      - name: No OneMap API call or token in the browser bundle
+        run: |
+          ! grep -rl -e "onemap.gov.sg/api" -e "ONEMAP_API_TOKEN" .next/static
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: web/test-results/
