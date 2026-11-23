@@ -16,8 +16,9 @@ live in `tomjwright/home` `AGENTS.md`; this file adds the rules for this repo.
 - `HEIGIT_API_KEY` stays server side: only `route_feasibility/heigit.py` reads it, only
   as the `Authorization` header to `api.heigit.org`. Never print, log, commit or record
   it; recorded fixtures are response bodies only.
-- `ONEMAP_API_TOKEN` stays server side the same way: only `api/src/route_api/onemap.py`
-  reads it, only as the `Authorization` header to OneMap's search endpoint. The browser
+- `ONEMAP_API_TOKEN` stays server side the same way: `app_from_env` in
+  `api/src/route_api/main.py` reads it and hands it to `onemap.py`, which sends it only as
+  the `Authorization` header to OneMap's search endpoint. The browser
   never calls a OneMap API; it only loads OneMap basemap tiles, which need no token.
 - Never pick a place for the user: every OneMap match is listed and the user confirms one.
 - Tests never call a live provider. They replay recorded real responses through
