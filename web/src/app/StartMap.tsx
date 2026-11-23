@@ -56,7 +56,7 @@ function ShowRoute({ route }: { route: [number, number][] }) {
   useEffect(() => {
     map.fitBounds(latLngs, { padding: [24, 24] });
   }, [map, route]); // eslint-disable-line react-hooks/exhaustive-deps
-  return <Polyline positions={latLngs} pathOptions={{ color: "#1565c0", weight: 4 }} />;
+  return <Polyline positions={latLngs} smoothFactor={0} pathOptions={{ color: "#1565c0", weight: 4 }} />;
 }
 
 export default function StartMap({ point, route, onPick }: Props) {
