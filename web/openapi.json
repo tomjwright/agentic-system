@@ -276,6 +276,401 @@
           }
         }
       }
+    },
+    "/api/route-requests/{route_request_id}/runs": {
+      "post": {
+        "summary": "Start Run",
+        "description": "Generate a loop now and return the finished run.\n\nRetrying with the same operation_id returns the run already recorded (HTTP 200),\neven while it is still generating; a different distance is refused.",
+        "operationId": "start_run_api_route_requests__route_request_id__runs_post",
+        "parameters": [
+          {
+            "name": "route_request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Route Request Id"
+            }
+          },
+          {
+            "name": "X-Owner-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._-]{1,64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Owner-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationRun"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/api/runs/{run_id}": {
+      "get": {
+        "summary": "Get Run",
+        "operationId": "get_run_api_runs__run_id__get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "X-Owner-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._-]{1,64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Owner-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationRun"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/api/runs/{run_id}/route": {
+      "get": {
+        "summary": "Get Selected Route",
+        "operationId": "get_selected_route_api_runs__run_id__route_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "X-Owner-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._-]{1,64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Owner-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectedRoute"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/api/runs/{run_id}/route.gpx": {
+      "get": {
+        "summary": "Export Gpx",
+        "operationId": "export_gpx_api_runs__run_id__route_gpx_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "X-Owner-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._-]{1,64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Owner-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/gpx+xml": {}
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -412,6 +807,77 @@
         ],
         "title": "ConfirmedStart"
       },
+      "DistanceBoundsOut": {
+        "properties": {
+          "min_m": {
+            "type": "number",
+            "title": "Min M"
+          },
+          "max_m": {
+            "type": "number",
+            "title": "Max M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "min_m",
+          "max_m"
+        ],
+        "title": "DistanceBoundsOut"
+      },
+      "DistanceRange": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "range",
+            "title": "Kind"
+          },
+          "min_km": {
+            "type": "number",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Min Km"
+          },
+          "max_km": {
+            "type": "number",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Max Km"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "min_km",
+          "max_km"
+        ],
+        "title": "DistanceRange",
+        "description": "Exact lower and upper bounds. No tolerance is added on either side."
+      },
+      "DistanceTarget": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "target",
+            "title": "Kind"
+          },
+          "target_km": {
+            "type": "number",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Target Km"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "target_km"
+        ],
+        "title": "DistanceTarget",
+        "description": "One distance to aim for. A loop within 10% either side of it is acceptable."
+      },
       "ErrorDetail": {
         "properties": {
           "code": {
@@ -424,7 +890,12 @@
               "provider_not_configured",
               "provider_unavailable",
               "provider_rejected",
-              "provider_response_invalid"
+              "provider_response_invalid",
+              "provider_quota_exhausted",
+              "activity_not_supported",
+              "operation_conflict",
+              "no_route_selected",
+              "generation_interrupted"
             ],
             "title": "Code"
           },
@@ -451,6 +922,154 @@
           "error"
         ],
         "title": "ErrorResponse"
+      },
+      "GenerationRun": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "route_request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Route Request Id"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision",
+            "description": "The request revision, numbered from 1; never changed"
+          },
+          "distance": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DistanceTarget"
+              },
+              {
+                "$ref": "#/components/schemas/DistanceRange"
+              }
+            ],
+            "title": "Distance",
+            "discriminator": {
+              "propertyName": "kind",
+              "mapping": {
+                "range": "#/components/schemas/DistanceRange",
+                "target": "#/components/schemas/DistanceTarget"
+              }
+            }
+          },
+          "bounds": {
+            "$ref": "#/components/schemas/DistanceBoundsOut",
+            "description": "Accepted distance in metres"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "generating",
+              "succeeded",
+              "no_route",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/RouteCandidate"
+            },
+            "type": "array",
+            "title": "Candidates"
+          },
+          "provider": {
+            "type": "string",
+            "const": "heigit",
+            "title": "Provider",
+            "default": "heigit"
+          },
+          "profile": {
+            "type": "string",
+            "title": "Profile"
+          },
+          "generator_version": {
+            "type": "string",
+            "title": "Generator Version"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "route_request_id",
+          "revision",
+          "distance",
+          "bounds",
+          "status",
+          "error",
+          "candidates",
+          "profile",
+          "generator_version",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "GenerationRun"
+      },
+      "LineString": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "LineString",
+            "title": "Type",
+            "default": "LineString"
+          },
+          "coordinates": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "Coordinates",
+            "description": "[longitude, latitude] in degrees"
+          }
+        },
+        "type": "object",
+        "required": [
+          "coordinates"
+        ],
+        "title": "LineString"
       },
       "MapStartChoice": {
         "properties": {
@@ -575,6 +1194,74 @@
         ],
         "title": "Point"
       },
+      "RouteCandidate": {
+        "properties": {
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "round_trip",
+              "via_loop"
+            ],
+            "title": "Method"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "description": "Round-trip seed; null for a via loop"
+          },
+          "requested_length_m": {
+            "type": "integer",
+            "title": "Requested Length M",
+            "description": "Length asked of HeiGIT, after correction"
+          },
+          "measured_distance_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measured Distance M",
+            "description": "Measured along the returned geometry"
+          },
+          "accepted": {
+            "type": "boolean",
+            "title": "Accepted"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "description": "Why this candidate was rejected; empty if accepted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "position",
+          "method",
+          "seed",
+          "requested_length_m",
+          "measured_distance_m",
+          "accepted",
+          "reasons"
+        ],
+        "title": "RouteCandidate"
+      },
       "RouteRequest": {
         "properties": {
           "id": {
@@ -643,6 +1330,141 @@
           "start"
         ],
         "title": "RouteRequestCreate"
+      },
+      "RunCreate": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id",
+            "description": "Chosen by the client. Sending the same one again returns the same run."
+          },
+          "distance": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DistanceTarget"
+              },
+              {
+                "$ref": "#/components/schemas/DistanceRange"
+              }
+            ],
+            "title": "Distance",
+            "discriminator": {
+              "propertyName": "kind",
+              "mapping": {
+                "range": "#/components/schemas/DistanceRange",
+                "target": "#/components/schemas/DistanceTarget"
+              }
+            }
+          }
+        },
+        "type": "object",
+        "required": [
+          "operation_id",
+          "distance"
+        ],
+        "title": "RunCreate"
+      },
+      "SelectedRoute": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "geometry": {
+            "$ref": "#/components/schemas/LineString"
+          },
+          "distance_m": {
+            "type": "number",
+            "title": "Distance M",
+            "description": "Measured along the geometry"
+          },
+          "target_m": {
+            "type": "number",
+            "title": "Target M"
+          },
+          "deviation_m": {
+            "type": "number",
+            "title": "Deviation M",
+            "description": "distance_m minus target_m"
+          },
+          "bounds": {
+            "$ref": "#/components/schemas/DistanceBoundsOut"
+          },
+          "walking_duration_s": {
+            "type": "number",
+            "title": "Walking Duration S",
+            "description": "HeiGIT's foot-walking time. It is not a running time."
+          },
+          "surfaces": {
+            "items": {
+              "$ref": "#/components/schemas/SurfaceDistance"
+            },
+            "type": "array",
+            "title": "Surfaces"
+          },
+          "unknown_surface_share": {
+            "type": "number",
+            "title": "Unknown Surface Share",
+            "description": "Share of the distance with no known surface"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Limitations"
+          },
+          "attribution": {
+            "type": "string",
+            "title": "Attribution"
+          },
+          "provider_engine": {
+            "type": "string",
+            "title": "Provider Engine"
+          },
+          "selected_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Selected At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "geometry",
+          "distance_m",
+          "target_m",
+          "deviation_m",
+          "bounds",
+          "walking_duration_s",
+          "surfaces",
+          "unknown_surface_share",
+          "limitations",
+          "attribution",
+          "provider_engine",
+          "selected_at"
+        ],
+        "title": "SelectedRoute"
+      },
+      "SurfaceDistance": {
+        "properties": {
+          "surface": {
+            "type": "string",
+            "title": "Surface"
+          },
+          "distance_m": {
+            "type": "number",
+            "title": "Distance M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "surface",
+          "distance_m"
+        ],
+        "title": "SurfaceDistance"
       }
     }
   }
