@@ -57,8 +57,10 @@ class OrsGeometry(BaseModel):
 
 
 class OrsExtraSummary(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
     value: float
-    distance: float
+    distance: float = Field(ge=0)
 
 
 class OrsExtra(BaseModel):

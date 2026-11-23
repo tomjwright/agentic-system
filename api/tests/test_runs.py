@@ -341,6 +341,26 @@ def test_an_exhausted_quota_fails_the_run_without_more_requests(clean_engine: En
     assert len(requests) == 1
 
 
+def test_a_fatal_provider_error_keeps_earlier_rejection_reasons(clean_engine: Engine) -> None:
+    responses = []
+
+    def recorded_then_quota(request: httpx.Request) -> httpx.Response:
+        responses.append(request)
+        if len(responses) == 1:
+            return recorded_response(request)
+        return httpx.Response(429, json={"error": "Quota exceeded"})
+
+    api = api_with_heigit(clean_engine, recorded_then_quota)
+    request_id = confirm_start(api, AVENUE_SOUTH_BLOCK_11)
+
+    run = start_run(api, request_id, {"kind": "target", "target_km": 5}).json()
+
+    assert run["status"] == "failed"
+    assert run["error"]["code"] == "provider_quota_exhausted"
+    assert run["candidates"][0]["reasons"] == ["6.496 km is outside 4.500-5.500 km"]
+    assert run["candidates"][1]["reasons"] != []
+
+
 def test_generation_without_a_key_is_unavailable(clean_engine: Engine) -> None:
     api = api_with_heigit(clean_engine, recorded_response, key=None)
     request_id = confirm_start(api, AVENUE_SOUTH_BLOCK_11)
