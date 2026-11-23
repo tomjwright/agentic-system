@@ -15,6 +15,7 @@ from route_feasibility.geo import LineIndex, distance_m, sample_route
 MATCH_DISTANCE_M = 12.0
 SAMPLE_SPACING_M = 10.0
 MIN_SECTION_M = 100.0
+MAX_BRIDGED_GAP_M = 50.0
 
 Cycling = Literal["allowed", "not allowed", "unknown"]
 
@@ -80,13 +81,17 @@ def load_tracks(geojson: dict[str, Any]) -> list[Track]:
     return list(tracks_by_id.values())
 
 
-def find_green_sections(coordinates: list[list[float]], tracks: list[Track]) -> list[GreenSection]:
-    """Stretches of the route that run along NParks tracks, grouped by park and permission."""
+def track_index(tracks: list[Track]) -> LineIndex[Track]:
     index: LineIndex[Track] = LineIndex()
     for each_track in tracks:
         for line in each_track.lines:
             index.add_line(each_track, line)
+    return index
 
+
+def find_green_sections(coordinates: list[list[float]], tracks: list[Track]) -> list[GreenSection]:
+    """Stretches of the route that run along NParks tracks, grouped by park and permission."""
+    index = track_index(tracks)
     sections: list[GreenSection] = []
     current: GreenSection | None = None
     previous_point = coordinates[0]
@@ -121,3 +126,56 @@ def find_green_sections(coordinates: list[list[float]], tracks: list[Track]) -> 
     if current is not None and current.length_m >= MIN_SECTION_M:
         sections.append(current)
     return sections
+
+
+class GreenRun(BaseModel):
+    """One unbroken stretch of the route on NParks tracks where cycling is allowed."""
+
+    parks: list[str]
+    length_m: float
+    bridged_m: float
+    track_ids: list[str]
+
+
+def contiguous_allowed_runs(coordinates: list[list[float]], tracks: list[Track]) -> list[GreenRun]:
+    """Stretches of the route on cycling-allowed tracks, joined across park names.
+
+    NParks names one long path by area (East Coast Park Area A, B, ...), so one ride along
+    it is several green sections. A run carries on across a gap of up to MAX_BRIDGED_GAP_M
+    (a junction, or a crossing where a not-allowed path lies nearer) and counts that gap
+    as bridged_m, not as length. A longer gap ends the run.
+    """
+    index = track_index(tracks)
+    runs: list[GreenRun] = []
+    current: GreenRun | None = None
+    gap_m = 0.0
+    previous_point = coordinates[0]
+    for point, _ in sample_route(coordinates, SAMPLE_SPACING_M):
+        step_m = distance_m(previous_point, point)
+        previous_point = point
+        track = index.nearest(point, MATCH_DISTANCE_M)
+        on_allowed_track = track is not None and track.cycling == "allowed"
+        if not on_allowed_track:
+            if current is not None:
+                gap_m += step_m
+                if gap_m > MAX_BRIDGED_GAP_M:
+                    current = None
+                    gap_m = 0.0
+            continue
+        assert track is not None
+        if current is None:
+            current = GreenRun(parks=[], length_m=0.0, bridged_m=0.0, track_ids=[])
+            runs.append(current)
+        else:
+            current.bridged_m += gap_m
+            current.length_m += step_m
+            gap_m = 0.0
+        if track.park not in current.parks:
+            current.parks.append(track.park)
+        if track.source_id not in current.track_ids:
+            current.track_ids.append(track.source_id)
+    long_runs = []
+    for run in runs:
+        if run.length_m >= MIN_SECTION_M:
+            long_runs.append(run)
+    return long_runs
