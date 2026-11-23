@@ -13,16 +13,20 @@ live in `tomjwright/home` `AGENTS.md`; this file adds the rules for this repo.
 
 ## Rules
 
-- `HEIGIT_API_KEY` stays server side: only `route_feasibility/heigit.py` reads it, only
-  as the `Authorization` header to `api.heigit.org`. Never print, log, commit or record
-  it; recorded fixtures are response bodies only.
+- `HEIGIT_API_KEY` stays server side: `route_feasibility/heigit.py` and `app_from_env` in
+  `api/src/route_api/main.py` read it, and it is sent only as the `Authorization` header
+  to the fixed `api.heigit.org` directions URL (`api/src/route_api/heigit.py`). Never
+  print, log, commit or record it; recorded fixtures are response bodies only.
+- A generated route is never edited: the selected candidate's stored geometry is what the
+  page draws and what the GPX contains. Invalid candidates are rejected, not repaired.
 - `ONEMAP_API_TOKEN` stays server side the same way: `app_from_env` in
   `api/src/route_api/main.py` reads it and hands it to `onemap.py`, which sends it only as
   the `Authorization` header to OneMap's search endpoint. The browser
   never calls a OneMap API; it only loads OneMap basemap tiles, which need no token.
 - Never pick a place for the user: every OneMap match is listed and the user confirms one.
 - Tests never call a live provider. They replay recorded real responses through
-  `httpx.MockTransport` (`feasibility/tests/test_cli.py`, `api/tests/recorded_onemap.py`).
+  `httpx.MockTransport` (`feasibility/tests/test_cli.py`, `api/tests/recorded_onemap.py`,
+  `api/tests/recorded_heigit.py`).
 - `web/openapi.json` and `web/src/api-types.ts` are generated: after changing
   `api/src/route_api/contracts.py` or a route, regenerate both (commands in Checks).
 - `api/` and `feasibility/` pin Python 3.12 (`.python-version`, which uv reads locally
