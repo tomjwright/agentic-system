@@ -126,7 +126,10 @@ job with polling; that is a design change to raise, not a reason to pay for host
 ## Deploy and recovery
 
 `.github/workflows/deploy.yml` runs `route_api.promote` after the `app` workflow passes on
-`main` (tested in `api/tests/test_promote.py`):
+`main` (tested in `api/tests/test_promote.py`). The repository is public and a fork's pull
+request also runs `app` (its branch may even be called `main`), so the job runs only for a
+`push` to this repository's `main`, or a manual run on `main`, and checks out that commit
+without keeping the token (`api/tests/test_deploy_workflow.py`):
 
 1. Refuse if any of `api`, `web`, `test`, `secrets-scan` is missing or not `success` on the
    commit. Nothing is deployed.
@@ -162,7 +165,10 @@ and HeiGIT quota. They are not yet imported or tried against a real stack.
 
 ## GitHub settings (Tom, as repository admin)
 
-The agent token has no admin rights, so these are not applied. Run as Tom:
+The agent token has no admin rights, so these are not applied. Run as Tom, **in this
+order, before `deploy.yml` reaches `main` and before any secret is added**. A job that names
+an environment which does not exist creates it with no protection, so the `production`
+environment and its main-only branch policy must exist first; then add its secrets.
 
 ```bash
 # A "production" environment only main may deploy to.
