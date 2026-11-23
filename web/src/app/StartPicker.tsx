@@ -15,6 +15,8 @@ import {
   searchPlaces,
 } from "@/api";
 
+import RunPanel from "./RunPanel";
+
 // Leaflet needs the browser's window, so the map is only rendered client-side.
 const StartMap = dynamic(() => import("./StartMap"), { ssr: false });
 
@@ -50,6 +52,7 @@ export default function StartPicker() {
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<RouteRequest | null>(null);
+  const [route, setRoute] = useState<[number, number][] | null>(null);
   const trimmed = query.trim();
 
   useEffect(() => {
@@ -76,6 +79,7 @@ export default function StartPicker() {
   function choose(next: Selection) {
     setSelection(next);
     setConfirmed(null);
+    setRoute(null);
     setConfirmError(null);
   }
 
@@ -95,6 +99,7 @@ export default function StartPicker() {
     }
     setConfirming(true);
     setConfirmError(null);
+    setRoute(null);
     try {
       const created = await createRouteRequest({ activity, start });
       setConfirmed(await getRouteRequest(created.id));
@@ -223,9 +228,11 @@ export default function StartPicker() {
             </p>
           </div>
         )}
+
+        {confirmed && <RunPanel key={confirmed.id} routeRequest={confirmed} onRoute={setRoute} />}
       </section>
       <div className="map-wrap">
-        <StartMap point={selectionPoint(selection)} onPick={pickOnMap} />
+        <StartMap point={selectionPoint(selection)} route={route} onPick={pickOnMap} />
       </div>
     </div>
   );
