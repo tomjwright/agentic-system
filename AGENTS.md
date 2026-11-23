@@ -13,10 +13,11 @@ live in `tomjwright/home` `AGENTS.md`; this file adds the rules for this repo.
 
 ## Rules
 
-- `HEIGIT_API_KEY` stays server side: `route_feasibility/heigit.py` and `app_from_env` in
-  `api/src/route_api/main.py` read it, and it is sent only as the `Authorization` header
-  to the fixed `api.heigit.org` directions URL (`api/src/route_api/heigit.py`). Never
-  print, log, commit or record it; recorded fixtures are response bodies only.
+- `HEIGIT_API_KEY` stays server side: `route_feasibility/heigit.py`, `app_from_env` in
+  `api/src/route_api/main.py` and the manual `api/scripts/record_heigit.py` read it, and
+  it is sent only as the `Authorization` header to the fixed `api.heigit.org` directions
+  URL (`api/src/route_api/heigit.py`). Never print, log, commit or record it; recorded
+  fixtures hold request and response bodies only, never headers.
 - A generated route is never edited: the selected candidate's stored geometry is what the
   page draws and what the GPX contains. Invalid candidates are rejected, not repaired.
 - `ONEMAP_API_TOKEN` stays server side the same way: `app_from_env` in
