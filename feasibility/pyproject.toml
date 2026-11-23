@@ -16,6 +16,7 @@ dev = [
     "pip-audit>=2.7",
     "pre-commit>=3.8",
     "pytest>=8.3",
+    "pytest-cov>=6",
     "ruff>=0.6",
 ]
 
@@ -45,3 +46,11 @@ files = ["src", "tests"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+branch = true
+source = ["route_feasibility"]
+
+[tool.coverage.report]
+fail_under = 88
+show_missing = true

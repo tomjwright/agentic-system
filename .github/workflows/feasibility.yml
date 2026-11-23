@@ -25,7 +25,8 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy
-      - run: uv run pytest
+      - name: Tests, failing below the coverage floor in pyproject.toml
+        run: uv run pytest --cov
       - name: Audit dependencies for known vulnerabilities
         # --disable-pip audits the hashed export as-is, so packages pip-audit itself needs (like pip) are not skipped.
         run: uv export --frozen --no-emit-project | uv run pip-audit --strict --disable-pip -r /dev/stdin
