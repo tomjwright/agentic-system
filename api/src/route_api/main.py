@@ -1,4 +1,5 @@
-"""The HTTP API: place search, start confirmation and owner-scoped route requests.
+"""The HTTP API: place search, start confirmation, owner-scoped route requests, and
+generating, inspecting and exporting a running loop.
 
 Owner identity (local development only): there is no sign-in yet. The caller's owner
 is the `X-Owner-Id` header, or LOCAL_OWNER_ID when the header is missing, so anyone
@@ -19,24 +20,42 @@ from fastapi import FastAPI, Header, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy import Engine, create_engine, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from route_api.contracts import (
     Candidate,
     ConfirmedStart,
     ErrorResponse,
+    GenerationRun,
     MapStartChoice,
     PlaceSearchRequest,
     PlaceSearchResponse,
     Point,
     RouteRequest,
     RouteRequestCreate,
+    RunCreate,
     SearchOutcome,
+    SelectedRoute,
 )
-from route_api.db import RouteRequestRecord
+from route_api.db import GenerationRunRecord, RouteRequestRecord
+from route_api.generation import generate
 from route_api.geography import on_singapore_land
+from route_api.gpx import route_to_gpx
+from route_api.heigit import Heigit
 from route_api.logs import configure_logging, log_event
 from route_api.onemap import OneMap, ProviderError
+from route_api.route_selection import distance_bounds
+from route_api.runs import (
+    find_operation,
+    find_run,
+    find_selected,
+    new_run,
+    save_generation,
+    to_generation_run,
+    to_selected_route,
+)
+from route_api.telemetry import setup_tracing, tracer
 
 ID_PATTERN = r"^[A-Za-z0-9._-]{1,64}$"
 ERRORS: dict[int | str, dict[str, Any]] = {
@@ -82,7 +101,26 @@ def to_route_request(record: RouteRequestRecord) -> RouteRequest:
     )
 
 
-def create_app(onemap: OneMap, engine: Engine, local_owner: str) -> FastAPI:
+def find_route_request(
+    session: Session, owner: str, route_request_id: uuid.UUID
+) -> RouteRequestRecord:
+    query = select(RouteRequestRecord).where(
+        RouteRequestRecord.id == route_request_id, RouteRequestRecord.owner_id == owner
+    )
+    record = session.scalars(query).first()
+    if record is None:
+        raise ApiError(404, "not_found", "No such route request")
+    return record
+
+
+def owned_run(session: Session, owner: str, run_id: uuid.UUID) -> GenerationRunRecord:
+    run = find_run(session, owner, run_id)
+    if run is None:
+        raise ApiError(404, "not_found", "No such run")
+    return run
+
+
+def create_app(onemap: OneMap, engine: Engine, local_owner: str, heigit: Heigit) -> FastAPI:
     app = FastAPI(title="Singapore route creator API", version="0.1.0")
 
     @app.middleware("http")
@@ -193,22 +231,148 @@ def create_app(onemap: OneMap, engine: Engine, local_owner: str) -> FastAPI:
 
     @app.get("/api/route-requests/{route_request_id}", responses=ERRORS)
     def get_route_request(route_request_id: uuid.UUID, owner: OwnerHeader = None) -> RouteRequest:
-        query = select(RouteRequestRecord).where(
-            RouteRequestRecord.id == route_request_id,
-            RouteRequestRecord.owner_id == (owner or local_owner),
-        )
         with Session(engine) as session:
-            record = session.scalars(query).first()
-            if record is None:
-                raise ApiError(404, "not_found", "No such route request")
+            record = find_route_request(session, owner or local_owner, route_request_id)
             return to_route_request(record)
+
+    @app.post(
+        "/api/route-requests/{route_request_id}/runs",
+        status_code=201,
+        responses={
+            **ERRORS,
+            200: {
+                "model": GenerationRun,
+                "description": "The run already recorded for this operation",
+            },
+        },
+    )
+    def start_run(
+        route_request_id: uuid.UUID,
+        body: RunCreate,
+        request: Request,
+        response: Response,
+        owner: OwnerHeader = None,
+    ) -> GenerationRun:
+        """Generate a loop now and return the finished run.
+
+        Retrying with the same operation_id returns the run already recorded (HTTP 200),
+        even while it is still generating; a different distance is refused.
+        """
+        owner = owner or local_owner
+        bounds = distance_bounds(body.distance)
+        with Session(engine) as session:
+            route_request = find_route_request(session, owner, route_request_id)
+            existing = find_operation(session, owner, body.operation_id)
+            if existing is not None:
+                response.status_code = 200
+                return same_operation(session, existing, route_request_id, body)
+            if route_request.activity != "running":
+                raise ApiError(
+                    422, "activity_not_supported", "Only running loops can be generated so far"
+                )
+            if not heigit.configured:
+                raise ApiError(503, "provider_not_configured", "Route generation is not configured")
+            start = (route_request.start_lon, route_request.start_lat)
+            try:
+                run = new_run(
+                    session, owner, route_request_id, body.operation_id, body.distance, bounds
+                )
+                with tracer.start_as_current_span("db.save_run"):
+                    session.commit()
+            except IntegrityError:
+                # The same operation arrived twice at once; the other request recorded it.
+                session.rollback()
+                existing = find_operation(session, owner, body.operation_id)
+                if existing is None:
+                    raise
+                response.status_code = 200
+                return same_operation(session, existing, route_request_id, body)
+
+            started = time.monotonic()
+            with tracer.start_as_current_span("generate_route") as span:
+                generation = generate(heigit, start, bounds)
+                span.set_attribute("route.attempts", len(generation.attempts))
+            with tracer.start_as_current_span("db.save_generation"):
+                save_generation(session, run, generation)
+                session.commit()
+            chosen = None
+            if generation.selection is not None:
+                chosen = generation.selection.chosen
+            log_event(
+                "generation_finished",
+                request_id=request.state.request_id,
+                run_id=str(run.id),
+                status=run.status,
+                error_code=run.error_code or "",
+                attempts=len(generation.attempts),
+                chosen=-1 if chosen is None else chosen,
+                duration_ms=round((time.monotonic() - started) * 1000),
+            )
+            return to_generation_run(session, run)
+
+    def same_operation(
+        session: Session, run: GenerationRunRecord, route_request_id: uuid.UUID, body: RunCreate
+    ) -> GenerationRun:
+        found = to_generation_run(session, run)
+        same_request = found.route_request_id == route_request_id
+        if not same_request or found.distance != body.distance:
+            raise ApiError(
+                409, "operation_conflict", "That operation_id was already used for another run"
+            )
+        return found
+
+    @app.get("/api/runs/{run_id}", responses=ERRORS)
+    def get_run(run_id: uuid.UUID, owner: OwnerHeader = None) -> GenerationRun:
+        with Session(engine) as session:
+            return to_generation_run(session, owned_run(session, owner or local_owner, run_id))
+
+    @app.get("/api/runs/{run_id}/route", responses=ERRORS)
+    def get_selected_route(run_id: uuid.UUID, owner: OwnerHeader = None) -> SelectedRoute:
+        with Session(engine) as session:
+            run = owned_run(session, owner or local_owner, run_id)
+            selected = find_selected(session, run)
+            if selected is None:
+                raise ApiError(409, "no_route_selected", "This run has no selected route")
+            return to_selected_route(session, run, selected[0], selected[1])
+
+    @app.get(
+        "/api/runs/{run_id}/route.gpx",
+        responses={**ERRORS, 200: {"content": {"application/gpx+xml": {}}}},
+        response_class=Response,
+    )
+    def export_gpx(run_id: uuid.UUID, owner: OwnerHeader = None) -> Response:
+        with Session(engine) as session:
+            run = owned_run(session, owner or local_owner, run_id)
+            selected = find_selected(session, run)
+            if selected is None:
+                raise ApiError(409, "no_route_selected", "This run has no selected route")
+            candidate = selected[1]
+            distance_km = (candidate.measured_distance_m or 0) / 1000
+            gpx = route_to_gpx(
+                f"Running loop {distance_km:.2f} km",
+                candidate.coordinates or [],
+                candidate.attribution or "",
+            )
+        filename = f"running-loop-{run_id}.gpx"
+        return Response(
+            content=gpx,
+            media_type="application/gpx+xml",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
     return app
 
 
 def app_from_env() -> FastAPI:
-    """Entry point for uvicorn --factory. Reads DATABASE_URL, ONEMAP_API_TOKEN, LOCAL_OWNER_ID."""
+    """Entry point for uvicorn --factory.
+
+    Reads DATABASE_URL, ONEMAP_API_TOKEN, HEIGIT_API_KEY, LOCAL_OWNER_ID and, optionally,
+    OTEL_EXPORTER_OTLP_ENDPOINT.
+    """
     configure_logging()
+    setup_tracing()
     onemap = OneMap(httpx.Client(), token=os.environ.get("ONEMAP_API_TOKEN"))
+    heigit = Heigit(httpx.Client(), api_key=os.environ.get("HEIGIT_API_KEY"))
     engine = create_engine(os.environ["DATABASE_URL"])
-    return create_app(onemap, engine, local_owner=os.environ.get("LOCAL_OWNER_ID", "local-owner"))
+    local_owner = os.environ.get("LOCAL_OWNER_ID", "local-owner")
+    return create_app(onemap, engine, local_owner=local_owner, heigit=heigit)

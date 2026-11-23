@@ -1,6 +1,6 @@
 name: codeql
 
-# Static security analysis of the Python code and the workflows themselves.
+# Static security analysis of the Python and TypeScript code and the workflows themselves.
 on:
   pull_request:
   push:
@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [python, actions]
+        language: [python, javascript-typescript, actions]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

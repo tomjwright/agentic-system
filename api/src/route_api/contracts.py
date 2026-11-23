@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 Activity = Literal["running", "road_cycling"]
 StartSource = Literal["onemap", "map_selection"]
@@ -21,6 +21,11 @@ ErrorCode = Literal[
     "provider_unavailable",
     "provider_rejected",
     "provider_response_invalid",
+    "provider_quota_exhausted",
+    "activity_not_supported",
+    "operation_conflict",
+    "no_route_selected",
+    "generation_interrupted",
 ]
 
 
@@ -101,3 +106,104 @@ class ErrorDetail(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: ErrorDetail
+
+
+MIN_DISTANCE_KM = 1
+MAX_DISTANCE_KM = 50
+
+
+class DistanceTarget(BaseModel):
+    """One distance to aim for. A loop within 10% either side of it is acceptable."""
+
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    kind: Literal["target"]
+    target_km: float = Field(ge=MIN_DISTANCE_KM, le=MAX_DISTANCE_KM)
+
+
+class DistanceRange(BaseModel):
+    """Exact lower and upper bounds. No tolerance is added on either side."""
+
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    kind: Literal["range"]
+    min_km: float = Field(ge=MIN_DISTANCE_KM, le=MAX_DISTANCE_KM)
+    max_km: float = Field(ge=MIN_DISTANCE_KM, le=MAX_DISTANCE_KM)
+
+    @model_validator(mode="after")
+    def lower_below_upper(self) -> "DistanceRange":
+        if self.min_km >= self.max_km:
+            raise ValueError("min_km must be below max_km")
+        return self
+
+
+Distance = Annotated[DistanceTarget | DistanceRange, Field(discriminator="kind")]
+
+
+RunStatus = Literal["generating", "succeeded", "no_route", "failed"]
+
+
+class RunCreate(BaseModel):
+    operation_id: UUID = Field(
+        description="Chosen by the client. Sending the same one again returns the same run."
+    )
+    distance: Distance
+
+
+class DistanceBoundsOut(BaseModel):
+    min_m: float
+    max_m: float
+
+
+class RouteCandidate(BaseModel):
+    position: int
+    method: Literal["round_trip", "via_loop"]
+    seed: int | None = Field(description="Round-trip seed; null for a via loop")
+    requested_length_m: int = Field(description="Length asked of HeiGIT, after correction")
+    measured_distance_m: float | None = Field(description="Measured along the returned geometry")
+    accepted: bool
+    reasons: list[str] = Field(description="Why this candidate was rejected; empty if accepted")
+
+
+class GenerationRun(BaseModel):
+    id: UUID
+    route_request_id: UUID
+    revision: int = Field(description="The request revision, numbered from 1; never changed")
+    distance: Distance
+    bounds: DistanceBoundsOut = Field(description="Accepted distance in metres")
+    status: RunStatus
+    error: ErrorDetail | None
+    candidates: list[RouteCandidate]
+    provider: Literal["heigit"] = "heigit"
+    profile: str
+    generator_version: str
+    started_at: datetime
+    finished_at: datetime | None
+
+
+class LineString(BaseModel):
+    type: Literal["LineString"] = "LineString"
+    coordinates: list[tuple[float, float]] = Field(description="[longitude, latitude] in degrees")
+
+
+class SurfaceDistance(BaseModel):
+    surface: str
+    distance_m: float
+
+
+class SelectedRoute(BaseModel):
+    run_id: UUID
+    geometry: LineString
+    distance_m: float = Field(description="Measured along the geometry")
+    target_m: float
+    deviation_m: float = Field(description="distance_m minus target_m")
+    bounds: DistanceBoundsOut
+    walking_duration_s: float = Field(
+        description="HeiGIT's foot-walking time. It is not a running time."
+    )
+    surfaces: list[SurfaceDistance]
+    unknown_surface_share: float = Field(description="Share of the distance with no known surface")
+    limitations: list[str]
+    attribution: str
+    provider_engine: str
+    selected_at: datetime

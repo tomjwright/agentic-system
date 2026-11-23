@@ -55,6 +55,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/route-requests/{route_request_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Run
+         * @description Generate a loop now and return the finished run.
+         *
+         *     Retrying with the same operation_id returns the run already recorded (HTTP 200),
+         *     even while it is still generating; a different distance is refused.
+         */
+        post: operations["start_run_api_route_requests__route_request_id__runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run */
+        get: operations["get_run_api_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}/route": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Selected Route */
+        get: operations["get_selected_route_api_runs__run_id__route_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}/route.gpx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Gpx */
+        get: operations["export_gpx_api_runs__run_id__route_gpx_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -101,19 +175,118 @@ export interface components {
              */
             retrieved_at: string;
         };
+        /** DistanceBoundsOut */
+        DistanceBoundsOut: {
+            /** Min M */
+            min_m: number;
+            /** Max M */
+            max_m: number;
+        };
+        /**
+         * DistanceRange
+         * @description Exact lower and upper bounds. No tolerance is added on either side.
+         */
+        DistanceRange: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "range";
+            /** Min Km */
+            min_km: number;
+            /** Max Km */
+            max_km: number;
+        };
+        /**
+         * DistanceTarget
+         * @description One distance to aim for. A loop within 10% either side of it is acceptable.
+         */
+        DistanceTarget: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "target";
+            /** Target Km */
+            target_km: number;
+        };
         /** ErrorDetail */
         ErrorDetail: {
             /**
              * Code
              * @enum {string}
              */
-            code: "invalid_request" | "outside_singapore" | "candidate_not_found" | "not_found" | "provider_not_configured" | "provider_unavailable" | "provider_rejected" | "provider_response_invalid";
+            code: "invalid_request" | "outside_singapore" | "candidate_not_found" | "not_found" | "provider_not_configured" | "provider_unavailable" | "provider_rejected" | "provider_response_invalid" | "provider_quota_exhausted" | "activity_not_supported" | "operation_conflict" | "no_route_selected" | "generation_interrupted";
             /** Message */
             message: string;
         };
         /** ErrorResponse */
         ErrorResponse: {
             error: components["schemas"]["ErrorDetail"];
+        };
+        /** GenerationRun */
+        GenerationRun: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Route Request Id
+             * Format: uuid
+             */
+            route_request_id: string;
+            /**
+             * Revision
+             * @description The request revision, numbered from 1; never changed
+             */
+            revision: number;
+            /** Distance */
+            distance: components["schemas"]["DistanceTarget"] | components["schemas"]["DistanceRange"];
+            /** @description Accepted distance in metres */
+            bounds: components["schemas"]["DistanceBoundsOut"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "generating" | "succeeded" | "no_route" | "failed";
+            error: components["schemas"]["ErrorDetail"] | null;
+            /** Candidates */
+            candidates: components["schemas"]["RouteCandidate"][];
+            /**
+             * Provider
+             * @default heigit
+             * @constant
+             */
+            provider: "heigit";
+            /** Profile */
+            profile: string;
+            /** Generator Version */
+            generator_version: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Finished At */
+            finished_at: string | null;
+        };
+        /** LineString */
+        LineString: {
+            /**
+             * Type
+             * @default LineString
+             * @constant
+             */
+            type: "LineString";
+            /**
+             * Coordinates
+             * @description [longitude, latitude] in degrees
+             */
+            coordinates: [
+                number,
+                number
+            ][];
         };
         /** MapStartChoice */
         MapStartChoice: {
@@ -174,6 +347,38 @@ export interface components {
                 number
             ];
         };
+        /** RouteCandidate */
+        RouteCandidate: {
+            /** Position */
+            position: number;
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "round_trip" | "via_loop";
+            /**
+             * Seed
+             * @description Round-trip seed; null for a via loop
+             */
+            seed: number | null;
+            /**
+             * Requested Length M
+             * @description Length asked of HeiGIT, after correction
+             */
+            requested_length_m: number;
+            /**
+             * Measured Distance M
+             * @description Measured along the returned geometry
+             */
+            measured_distance_m: number | null;
+            /** Accepted */
+            accepted: boolean;
+            /**
+             * Reasons
+             * @description Why this candidate was rejected; empty if accepted
+             */
+            reasons: string[];
+        };
         /** RouteRequest */
         RouteRequest: {
             /**
@@ -202,6 +407,69 @@ export interface components {
             activity: "running" | "road_cycling";
             /** Start */
             start: components["schemas"]["NamedStartChoice"] | components["schemas"]["MapStartChoice"];
+        };
+        /** RunCreate */
+        RunCreate: {
+            /**
+             * Operation Id
+             * Format: uuid
+             * @description Chosen by the client. Sending the same one again returns the same run.
+             */
+            operation_id: string;
+            /** Distance */
+            distance: components["schemas"]["DistanceTarget"] | components["schemas"]["DistanceRange"];
+        };
+        /** SelectedRoute */
+        SelectedRoute: {
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            geometry: components["schemas"]["LineString"];
+            /**
+             * Distance M
+             * @description Measured along the geometry
+             */
+            distance_m: number;
+            /** Target M */
+            target_m: number;
+            /**
+             * Deviation M
+             * @description distance_m minus target_m
+             */
+            deviation_m: number;
+            bounds: components["schemas"]["DistanceBoundsOut"];
+            /**
+             * Walking Duration S
+             * @description HeiGIT's foot-walking time. It is not a running time.
+             */
+            walking_duration_s: number;
+            /** Surfaces */
+            surfaces: components["schemas"]["SurfaceDistance"][];
+            /**
+             * Unknown Surface Share
+             * @description Share of the distance with no known surface
+             */
+            unknown_surface_share: number;
+            /** Limitations */
+            limitations: string[];
+            /** Attribution */
+            attribution: string;
+            /** Provider Engine */
+            provider_engine: string;
+            /**
+             * Selected At
+             * Format: date-time
+             */
+            selected_at: string;
+        };
+        /** SurfaceDistance */
+        SurfaceDistance: {
+            /** Surface */
+            surface: string;
+            /** Distance M */
+            distance_m: number;
         };
     };
     responses: never;
@@ -372,6 +640,295 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RouteRequest"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    start_run_api_route_requests__route_request_id__runs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Owner-Id"?: string | null;
+            };
+            path: {
+                route_request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunCreate"];
+            };
+        };
+        responses: {
+            /** @description The run already recorded for this operation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerationRun"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerationRun"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_run_api_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Owner-Id"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerationRun"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_selected_route_api_runs__run_id__route_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Owner-Id"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelectedRoute"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    export_gpx_api_runs__run_id__route_gpx_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Owner-Id"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/gpx+xml": unknown;
                 };
             };
             /** @description Not Found */
