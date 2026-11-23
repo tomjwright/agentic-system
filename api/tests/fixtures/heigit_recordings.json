@@ -1,0 +1,361 @@
+[
+ {
+  "request": {
+   "coordinates": [
+    [
+     103.8291052120283,
+     1.276629534107344
+    ]
+   ],
+   "options": {
+    "round_trip": {
+     "length": 5000,
+     "points": 3,
+     "seed": 1
+    },
+    "avoid_features": [
+     "ferries"
+    ]
+   },
+   "extra_info": [
+    "surface",
+    "waytype",
+    "waycategory",
+    "steepness"
+   ],
+   "instructions": true
+  },
+  "status": 200,
+  "file": "heigit_foot_round_trip_5km_seed1.json"
+ },
+ {
+  "request": {
+   "coordinates": [
+    [
+     103.8291052120283,
+     1.276629534107344
+    ]
+   ],
+   "options": {
+    "round_trip": {
+     "length": 5000,
+     "points": 3,
+     "seed": 2
+    },
+    "avoid_features": [
+     "ferries"
+    ]
+   },
+   "extra_info": [
+    "surface",
+    "waytype",
+    "waycategory",
+    "steepness"
+   ],
+   "instructions": true
+  },
+  "status": 200,
+  "file": "heigit_foot_round_trip_5km_seed2.json"
+ },
+ {
+  "request": {
+   "coordinates": [
+    [
+     103.8291052120283,
+     1.276629534107344
+    ]
+   ],
+   "options": {
+    "round_trip": {
+     "length": 3849,
+     "points": 3,
+     "seed": 2
+    },
+    "avoid_features": [
+     "ferries"
+    ]
+   },
+   "extra_info": [
+    "surface",
+    "waytype",
+    "waycategory",
+    "steepness"
+   ],
+   "instructions": true
+  },
+  "status": 200,
+  "file": "heigit_avenue_south_5km_1.json"
+ },
+ {
+  "request": {
+   "coordinates": [
+    [
+     103.8291052120283,
+     1.276629534107344
+    ]
+   ],
+   "options": {
+    "round_trip": {
+     "length": 5025,
+     "points": 3,
+     "seed": 1
+    },
+    "avoid_features": [
+     "ferries"
+    ]
+   },
+   "extra_info": [
+    "surface",
+    "waytype",
+    "waycategory",
+    "steepness"
+   ],
+   "instructions": true
+  },
+  "status": 200,
+  "file": "heigit_avenue_south_narrow_1.json"
+ },
+ {
+  "request": {
+   "coordinates": [
+    [
+     103.8291052120283,
+     1.276629534107344
+    ]
+   ],
+   "options": {
+    "round_trip": {
+     "length": 3887,
+     "points": 3,
+     "seed": 2
+    },
+    "avoid_features": [
+     "ferries"
+    ]
+   },
+   "extra_info": [
+    "surface",
+    "waytype",
+    "waycategory",
+    "steepness"
+   ],
+   "instructions": true
+  },
+  "status": 200,
+  "file": "heigit_avenue_south_narrow_2.json"
+ },
+ {
+  "request": {
+   "coordinates": [
+    [
+     103.8291052120283,
+     1.276629534107344
+    ]
+   ],
+   "options": {
+    "round_trip": {
+     "length": 3717,
+     "points": 3,
+     "seed": 3
+    },
+    "avoid_features": [
+     "ferries"
+    ]
+   },
+   "extra_info": [
+    "surface",
+    "waytype",
+    "waycategory",
+    "steepness"
+   ],
+   "instructions": true
+  },
+  "status": 200,
+  "file": "heigit_avenue_south_narrow_3.json"
+ },
+ {
+  "request": {
+   "coordinates": [
+    [
+     103.8291052120283,
+     1.276629534107344
+    ]
+   ],
+   "options": {
+    "round_trip": {
+     "length": 4662,
+     "points": 3,
+     "seed": 4
+    },
+    "avoid_features": [
+     "ferries"
+    ]
+   },
+   "extra_info": [
+    "surface",
+    "waytype",
+    "waycategory",
+    "steepness"
+   ],
+   "instructions": true
+  },
+  "status": 200,
+  "file": "heigit_avenue_south_narrow_4.json"
+ },
+ {
+  "request": {
+   "coordinates": [
+    [
+     103.8291052120283,
+     1.276629534107344
+    ]
+   ],
+   "options": {
+    "round_trip": {
+     "length": 5024,
+     "points": 3,
+     "seed": 5
+    },
+    "avoid_features": [
+     "ferries"
+    ]
+   },
+   "extra_info": [
+    "surface",
+    "waytype",
+    "waycategory",
+    "steepness"
+   ],
+   "instructions": true
+  },
+  "status": 200,
+  "file": "heigit_avenue_south_narrow_5.json"
+ },
+ {
+  "request": {
+   "coordinates": [
+    [
+     103.924568894436,
+     1.313266240371461
+    ]
+   ],
+   "options": {
+    "round_trip": {
+     "length": 8000,
+     "points": 3,
+     "seed": 1
+    },
+    "avoid_features": [
+     "ferries"
+    ]
+   },
+   "extra_info": [
+    "surface",
+    "waytype",
+    "waycategory",
+    "steepness"
+   ],
+   "instructions": true
+  },
+  "status": 200,
+  "file": "heigit_east_coast_park_8km_1.json"
+ },
+ {
+  "request": {
+   "coordinates": [
+    [
+     103.924568894436,
+     1.313266240371461
+    ]
+   ],
+   "options": {
+    "round_trip": {
+     "length": 9247,
+     "points": 3,
+     "seed": 2
+    },
+    "avoid_features": [
+     "ferries"
+    ]
+   },
+   "extra_info": [
+    "surface",
+    "waytype",
+    "waycategory",
+    "steepness"
+   ],
+   "instructions": true
+  },
+  "status": 200,
+  "file": "heigit_east_coast_park_8km_2.json"
+ },
+ {
+  "request": {
+   "coordinates": [
+    [
+     103.9471253158095,
+     1.380999388858507
+    ]
+   ],
+   "options": {
+    "round_trip": {
+     "length": 15000,
+     "points": 3,
+     "seed": 1
+    },
+    "avoid_features": [
+     "ferries"
+    ]
+   },
+   "extra_info": [
+    "surface",
+    "waytype",
+    "waycategory",
+    "steepness"
+   ],
+   "instructions": true
+  },
+  "status": 200,
+  "file": "heigit_pasir_ris_15km_1.json"
+ },
+ {
+  "request": {
+   "coordinates": [
+    [
+     103.9471253158095,
+     1.380999388858507
+    ],
+    [
+     103.933381,
+     1.359011
+    ],
+    [
+     103.911387,
+     1.372751
+    ],
+    [
+     103.925131,
+     1.394739
+    ],
+    [
+     103.9471253158095,
+     1.380999388858507
+    ]
+   ],
+   "options": {
+    "avoid_features": [
+     "ferries"
+    ]
+   },
+   "extra_info": [
+    "surface",
+    "waytype",
+    "waycategory",
+    "steepness"
+   ],
+   "instructions": true
+  },
+  "status": 200,
+  "file": "heigit_pasir_ris_15km_via_1.json"
+ }
+]
