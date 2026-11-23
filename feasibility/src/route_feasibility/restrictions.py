@@ -11,7 +11,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from route_feasibility.geo import LineIndex, distance_m, sample_route
+from route_feasibility.geo import LineIndex, distance_m, point_to_segment_m, sample_route
 
 MATCH_DISTANCE_M = 8.0
 SAMPLE_SPACING_M = 10.0
@@ -89,6 +89,11 @@ def contact_for(
     return contact
 
 
+def on_line(point: list[float], line: list[list[float]]) -> bool:
+    offsets = [point_to_segment_m(point, a, b) for a, b in itertools.pairwise(line)]
+    return min(offsets) <= ON_WAY_M
+
+
 def inspect_route(
     coordinates: list[list[float]], ways: list[RestrictedWay], step_names: list[str]
 ) -> list[RestrictionContact]:
@@ -125,11 +130,7 @@ def inspect_route(
         way = index.nearest(middle, ON_WAY_M)
         if way is None:
             continue
-        way_at_a = index.nearest(a, ON_WAY_M)
-        way_at_b = index.nearest(b, ON_WAY_M)
-        if way_at_a is None or way_at_b is None:
-            continue
-        if way_at_a.kind != way.kind or way_at_b.kind != way.kind:
+        if not on_line(a, way.line) or not on_line(b, way.line):
             continue
         contact_for(found, way, step_names[vertex]).on_m += distance_m(a, b)
 
