@@ -99,6 +99,7 @@ export default function StartPicker() {
     }
     setConfirming(true);
     setConfirmError(null);
+    setRoute(null);
     try {
       const created = await createRouteRequest({ activity, start });
       setConfirmed(await getRouteRequest(created.id));
@@ -228,7 +229,7 @@ export default function StartPicker() {
           </div>
         )}
 
-        {confirmed && <RunPanel routeRequest={confirmed} onRoute={setRoute} />}
+        {confirmed && <RunPanel key={confirmed.id} routeRequest={confirmed} onRoute={setRoute} />}
       </section>
       <div className="map-wrap">
         <StartMap point={selectionPoint(selection)} route={route} onPick={pickOnMap} />

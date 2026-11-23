@@ -82,3 +82,15 @@ test("an inverted range is refused before anything is generated", async ({ page 
     "The lower end of the range must be below the upper end.",
   );
 });
+
+test("confirming the start again clears the earlier loop", async ({ page }) => {
+  await page.getByLabel("Target km").fill("5");
+  await page.getByRole("button", { name: "Generate loop" }).click();
+  await expect(page.getByRole("link", { name: "Download GPX" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Confirm start" }).click();
+
+  await expect(page.getByText("Start confirmed")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Download GPX" })).toHaveCount(0);
+  await expect(page.locator('path[stroke="#1565c0"]')).toHaveCount(0);
+});
