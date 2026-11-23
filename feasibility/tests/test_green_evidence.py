@@ -92,10 +92,10 @@ def test_duplicates_that_disagree_on_cycling_become_unknown() -> None:
     assert [t.cycling for t in tracks] == ["unknown"]
 
 
-# Paths that carry straight on east from TRACK_LINE: one 40 m, one 500 m after it.
-SHORT_TRACK_LINE = [[103.8045, 1.3000], [103.80486, 1.3000]]
+# Paths that carry straight on east from TRACK_LINE: one 30 m, one 500 m after it.
+SHORT_TRACK_LINE = [[103.8045, 1.3000], [103.80477, 1.3000]]
 NEXT_TRACK_LINE = [[103.8045, 1.3000], [103.8090, 1.3000]]
-LAST_TRACK_LINE = [[103.80486, 1.3000], [103.80936, 1.3000]]
+LAST_TRACK_LINE = [[103.80477, 1.3000], [103.80927, 1.3000]]
 ROUTE_ALONG_ALL_TRACKS = [[103.7990, 1.30001], [103.8100, 1.30001]]
 
 
@@ -138,7 +138,7 @@ def test_a_short_crossing_where_cycling_is_not_allowed_is_bridged() -> None:
     assert len(runs) == 1
     run = runs[0]
     assert run.track_ids == ["AREA_A", "AREA_B"]
-    # The 40 m path, less the ends that match the allowed tracks on either side.
+    # The 30 m path, less the ends that match the allowed tracks on either side.
     assert 10 <= run.bridged_m <= 50
 
 
@@ -153,3 +153,23 @@ def test_a_long_stretch_where_cycling_is_not_allowed_ends_the_run() -> None:
     runs = contiguous_allowed_runs(ROUTE_ALONG_ALL_TRACKS, tracks)
 
     assert [(r.parks, r.track_ids) for r in runs] == [(["EAST COAST PARK AREA A"], ["AREA_A"])]
+
+
+# A second allowed track that starts 66 m after TRACK_LINE ends. Between the last route
+# point matched to one track and the first matched to the other, the route covers more
+# than the 50 m bridging limit, counting the step back onto the track.
+TRACK_AFTER_GAP = [[103.805093, 1.3000], [103.809593, 1.3000]]
+ROUTE_ACROSS_GAP = [[103.7990, 1.30001], [103.8107, 1.30001]]
+
+
+def test_a_gap_just_over_the_bridging_limit_ends_the_run() -> None:
+    tracks = load_tracks(
+        nparks_tracks(
+            track("Y", crc="AREA_A", park="EAST COAST PARK AREA A"),
+            track_on(TRACK_AFTER_GAP, "Y", crc="AREA_B", park="EAST COAST PARK AREA B"),
+        )
+    )
+
+    runs = contiguous_allowed_runs(ROUTE_ACROSS_GAP, tracks)
+
+    assert [r.track_ids for r in runs] == [["AREA_A"], ["AREA_B"]]

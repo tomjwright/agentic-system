@@ -16,7 +16,7 @@ live in `tomjwright/home` `AGENTS.md`; this file adds the rules for this repo.
 - Tests never call a live provider. They replay recorded real responses through
   `httpx.MockTransport` (`feasibility/tests/test_cli.py`).
 - Live runs are manual and bounded: `feasibility/scripts/run_live_cases.sh` makes at
-  most 32 HeiGIT requests (free plan: 2000 directions a day, 40 a minute).
+  most 38 HeiGIT requests (free plan: 2000 directions a day, 40 a minute).
 - Downloaded datasets go in `feasibility/data/` (git-ignored).
 
 ## Checks
