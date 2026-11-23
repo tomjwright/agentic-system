@@ -706,6 +706,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The run already recorded for this operation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerationRun"];
+                };
+            };
             /** @description Successful Response */
             201: {
                 headers: {

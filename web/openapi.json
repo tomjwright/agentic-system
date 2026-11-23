@@ -381,6 +381,16 @@
               }
             },
             "description": "Service Unavailable"
+          },
+          "200": {
+            "description": "The run already recorded for this operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationRun"
+                }
+              }
+            }
           }
         }
       }

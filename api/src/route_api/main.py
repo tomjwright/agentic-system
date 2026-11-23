@@ -235,7 +235,17 @@ def create_app(onemap: OneMap, engine: Engine, local_owner: str, heigit: Heigit)
             record = find_route_request(session, owner or local_owner, route_request_id)
             return to_route_request(record)
 
-    @app.post("/api/route-requests/{route_request_id}/runs", status_code=201, responses=ERRORS)
+    @app.post(
+        "/api/route-requests/{route_request_id}/runs",
+        status_code=201,
+        responses={
+            **ERRORS,
+            200: {
+                "model": GenerationRun,
+                "description": "The run already recorded for this operation",
+            },
+        },
+    )
     def start_run(
         route_request_id: uuid.UUID,
         body: RunCreate,
