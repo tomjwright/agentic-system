@@ -1,5 +1,5 @@
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import httpx
@@ -9,8 +9,10 @@ from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, text
 
+from route_api.heigit import Heigit
 from route_api.main import create_app
 from route_api.onemap import OneMap
+from tests import recorded_heigit
 from tests.recorded_onemap import recorded_response
 
 # A database the tests may wipe. Never point this at real data.
@@ -18,6 +20,7 @@ TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/routes_test"
 )
 FAKE_TOKEN = "fake-onemap-token-for-tests"
+FAKE_HEIGIT_KEY = "fake-heigit-key-for-tests"
 API_DIR = Path(__file__).parent.parent
 
 
@@ -38,13 +41,21 @@ def engine() -> Iterator[Engine]:
 @pytest.fixture
 def clean_engine(engine: Engine) -> Engine:
     with engine.begin() as connection:
-        connection.execute(text("TRUNCATE route_requests"))
+        connection.execute(text("TRUNCATE route_requests CASCADE"))
     return engine
 
 
-def api_with(engine: Engine, handler: httpx.MockTransport, token: str | None) -> TestClient:
+def api_with(
+    engine: Engine,
+    handler: httpx.MockTransport,
+    token: str | None,
+    heigit_handler: Callable[[httpx.Request], httpx.Response] = recorded_heigit.recorded_response,
+    heigit_key: str | None = FAKE_HEIGIT_KEY,
+) -> TestClient:
     onemap = OneMap(httpx.Client(transport=handler), token=token, retry_wait_seconds=0)
-    return TestClient(create_app(onemap, engine, local_owner="local-owner"))
+    heigit_http = httpx.Client(transport=httpx.MockTransport(heigit_handler))
+    heigit = Heigit(heigit_http, heigit_key, request_gap_seconds=0, retry_wait_seconds=0)
+    return TestClient(create_app(onemap, engine, local_owner="local-owner", heigit=heigit))
 
 
 @pytest.fixture
