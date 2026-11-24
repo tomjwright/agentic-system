@@ -71,3 +71,8 @@ def test_a_database_behind_this_release_is_not_ready_until_migrated(
 
 def test_every_migration_is_known() -> None:
     assert known_revisions() == {"0001", "0002", "0003", "0004"}
+
+
+def test_a_percent_encoded_database_url_migrates(database_at: Engine, database_url: str) -> None:
+    encoded = f"{database_url}?application_name=route%20api"
+    assert migrate(encoded) == "database at this release's head"

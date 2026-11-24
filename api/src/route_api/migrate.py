@@ -38,7 +38,8 @@ def migrate(url: str) -> str:
     if applied is not None and applied not in known_revisions():
         return f"database at {applied}, newer than this release; left as it is"
     config = Config(str(API_DIR / "alembic.ini"))
-    config.set_main_option("sqlalchemy.url", url)
+    # The config file syntax reads % as interpolation; percent-encoded passwords have them.
+    config.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
     command.upgrade(config, "head")
     return "database at this release's head"
 
