@@ -12,6 +12,7 @@ alert.provisioning:write on the folder).
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -42,6 +43,7 @@ def call(method: str, path: str, body: dict | None = None) -> dict:
 
 def main(folder_uid: str) -> None:
     (group,) = yaml.safe_load(ALERTS.read_text())["groups"]
+    created = False
     try:
         call("GET", f"/api/folders/{folder_uid}")
     except urllib.error.HTTPError as error:
@@ -50,6 +52,7 @@ def main(folder_uid: str) -> None:
             raise
         try:
             call("POST", "/api/folders", {"uid": folder_uid, "title": folder_uid})
+            created = True
         except urllib.error.HTTPError as exists:
             if exists.code != 409:
                 raise
@@ -66,15 +69,22 @@ def main(folder_uid: str) -> None:
         }
         for rule in group["rules"]
     ]
-    call(
-        "PUT",
-        f"/api/v1/provisioning/folder/{folder_uid}/rule-groups/{group['name']}",
-        {
-            "title": group["name"],
-            "interval": seconds(group["interval"]),
-            "rules": rules,
-        },
-    )
+    body = {
+        "title": group["name"],
+        "interval": seconds(group["interval"]),
+        "rules": rules,
+    }
+    path = f"/api/v1/provisioning/folder/{folder_uid}/rule-groups/{group['name']}"
+    # Grafana grants the creator its rights on a new folder a few seconds after creating it.
+    attempts = 12 if created else 1
+    for attempt in range(attempts):
+        try:
+            call("PUT", path, body)
+            break
+        except urllib.error.HTTPError as error:
+            if error.code != 403 or attempt == attempts - 1:
+                raise
+            time.sleep(5)
     print(
         f"imported {len(rules)} rules into folder {folder_uid}, group {group['name']}"
     )

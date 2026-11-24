@@ -187,10 +187,12 @@ Besides the existing jobs, `ci.yml` runs on every PR:
 With `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` set the API exports
 spans (`generate_route` with `route.error_code`, `heigit.directions` with the HTTP status).
 `ops/grafana/alerts.yaml` holds three rules: outage (a Grafana Synthetic Monitoring HTTP
-check named `route-api-health` on `/api/health` failing for 10 minutes), generation errors
-and HeiGIT quota. Each rule's queries evaluate on the real stack (`POST /api/v1/eval`);
-`ops/grafana/import_alerts.py` imports them. The
-outage rule alerts on no data too, so it fires until the Synthetic Monitoring check exists.
+check named `route-api-health` on `/api/health` from Singapore every 5 minutes, failing for
+10 minutes), generation errors and HeiGIT quota. Give the check a 10 s timeout: at the
+default 3 s every probe timed out on the free instance while it answered other clients in
+under a second. Each rule's queries evaluate on the real stack (`POST /api/v1/eval`), and
+the imported rules report healthy in Grafana; `ops/grafana/import_alerts.py` imports them.
+The outage rule alerts on no data too, so it fires if the Synthetic Monitoring check is gone.
 Alerts reach someone only once the stack has a contact point and the notification policy
 sends to it.
 
