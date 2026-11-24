@@ -301,9 +301,12 @@ def to_selected_route(
                 " OpenStreetMap records no cycling ban there; follow any signs at the entrance.",
             )
         if trunk_names:
+            trunk_length = f"{trunk_m / 1000:.1f} km"
+            if trunk_m < 1000:
+                trunk_length = f"{round(trunk_m)} m"
             limitations.insert(
                 3,
-                f"It rides {trunk_m / 1000:.1f} km on trunk roads ({', '.join(trunk_names)})."
+                f"It rides {trunk_length} on trunk roads ({', '.join(trunk_names)})."
                 " Bicycles are allowed there, but traffic is heavy.",
             )
     if unknown_share > 0:

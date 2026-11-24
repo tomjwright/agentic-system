@@ -54,12 +54,7 @@ function readDistance(
   }
   const minKm = Number(low);
   const maxKm = Number(high);
-  if (
-    !Number.isFinite(minKm) ||
-    !Number.isFinite(maxKm) ||
-    minKm < MIN_KM ||
-    maxKm > MAX_KM
-  ) {
+  if (!Number.isFinite(minKm) || !Number.isFinite(maxKm) || minKm < MIN_KM || maxKm > MAX_KM) {
     return `Enter both ends of the range, from ${MIN_KM} to ${MAX_KM} km.`;
   }
   if (minKm >= maxKm) {
@@ -120,9 +115,7 @@ export default function RunPanel({ routeRequest, onRoute }: Props) {
         setPending(null);
         setError(caught.message);
       } else {
-        setError(
-          "The route API could not be reached. Generate again to pick up the same run.",
-        );
+        setError("The route API could not be reached. Generate again to pick up the same run.");
       }
     } finally {
       setGenerating(false);
@@ -190,12 +183,7 @@ export default function RunPanel({ routeRequest, onRoute }: Props) {
           </label>
         </div>
       )}
-      <button
-        type="button"
-        className="confirm"
-        onClick={generate}
-        disabled={generating}
-      >
+      <button type="button" className="confirm" onClick={generate} disabled={generating}>
         Generate loop
       </button>
       {generating && (
@@ -216,8 +204,8 @@ export default function RunPanel({ routeRequest, onRoute }: Props) {
       {run?.status === "no_route" && (
         <div className="error" role="alert">
           <p>
-            No acceptable loop between {km(run.bounds.min_m)} and{" "}
-            {km(run.bounds.max_m)} after {run.candidates.length} tries.
+            No acceptable loop between {km(run.bounds.min_m)} and {km(run.bounds.max_m)} after{" "}
+            {run.candidates.length} tries.
           </p>
           <ul>
             {run.candidates.map((candidate) => (
@@ -229,19 +217,14 @@ export default function RunPanel({ routeRequest, onRoute }: Props) {
       {run && route && (
         <div className="result" role="status">
           <p className="distance-measured">
-            <strong>{km(route.distance_m)}</strong> loop (
-            {route.deviation_m >= 0 ? "+" : "−"}
-            {Math.abs(Math.round(route.deviation_m))} m from{" "}
-            {km(route.target_m)}; accepted {km(route.bounds.min_m)} to{" "}
-            {km(route.bounds.max_m)})
+            <strong>{km(route.distance_m)}</strong> loop ({route.deviation_m >= 0 ? "+" : "−"}
+            {Math.abs(Math.round(route.deviation_m))} m from {km(route.target_m)}; accepted{" "}
+            {km(route.bounds.min_m)} to {km(route.bounds.max_m)})
           </p>
           {route.activity === "running" ? (
             <p>Walking time {minutes(route.duration_s)} (not a running time)</p>
           ) : (
-            <p>
-              Cycling time {minutes(route.duration_s)} (HeiGIT cycling-road
-              estimate)
-            </p>
+            <p>Cycling time {minutes(route.duration_s)} (HeiGIT cycling-road estimate)</p>
           )}
           <ul className="limitations" aria-label="Limitations">
             {route.limitations.map((limitation) => (
@@ -250,12 +233,10 @@ export default function RunPanel({ routeRequest, onRoute }: Props) {
           </ul>
           {route.access.status !== "not_checked" && (
             <details>
-              <summary>
-                Restricted roads checked: {route.access.roads.length} nearby
-              </summary>
+              <summary>Restricted roads checked: {route.access.roads.length} nearby</summary>
               <ul aria-label="Restricted roads">
                 {route.access.roads.map((road) => (
-                  <li key={`${road.kind} ${road.name}`}>
+                  <li key={road.osm_way_ids.join(" ")}>
                     {road.name} ({road.kind}): {ROAD_OUTCOMES[road.outcome]}
                     {road.on_m > 0 ? `, ${Math.round(road.on_m)} m` : ""}
                   </li>
@@ -266,19 +247,13 @@ export default function RunPanel({ routeRequest, onRoute }: Props) {
           )}
           <details>
             <summary>
-              {run.candidates.length}{" "}
-              {run.candidates.length === 1 ? "try" : "tries"}
+              {run.candidates.length} {run.candidates.length === 1 ? "try" : "tries"}
             </summary>
             <ul>
               {run.candidates.map((candidate) => (
                 <li key={candidate.position}>
-                  {candidate.method === "round_trip"
-                    ? `Seed ${candidate.seed}`
-                    : "Via loop"}
-                  :{" "}
-                  {candidate.accepted
-                    ? "accepted"
-                    : candidate.reasons.join("; ")}
+                  {candidate.method === "round_trip" ? `Seed ${candidate.seed}` : "Via loop"}:{" "}
+                  {candidate.accepted ? "accepted" : candidate.reasons.join("; ")}
                 </li>
               ))}
             </ul>

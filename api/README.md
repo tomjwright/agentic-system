@@ -17,7 +17,7 @@ issue #4 a road-cycling loop. There are no model calls.
    run (HTTP 201). The distance is `{"kind": "target", "target_km": 5}` (any loop within
    10% either side) or `{"kind": "range", "min_km": 5, "max_km": 6}` (exact, no
    tolerance added): 1 to 50 km running, 5 to 100 km road cycling (else HTTP 422
-   `distance_invalid`). Each run adds a new immutable revision of the request. Sending
+   `invalid_request`). Each run adds a new immutable revision of the request. Sending
    the same `operation_id` again returns the run already recorded (HTTP 200); with a
    different distance it is HTTP 409 `operation_conflict`.
 5. `GET /api/runs/{id}` is the run: `status` (`generating`, `succeeded`, `no_route`,
