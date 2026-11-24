@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 from route_api.agent import run_agent
 from route_api.agent_models import RunRequest, RunStart
 from route_api.agent_runs import (
+    answer_steps,
     fail_agent_run,
     find_agent_run,
     finish_agent_run,
@@ -597,7 +598,9 @@ def create_app(
                 repairs=result.repairs,
                 duration_ms=round((time.monotonic() - started) * 1000),
             )
-            return AgentAnswer(run=to_agent_run(run), message=result.message)
+            return AgentAnswer(
+                run=to_agent_run(run), message=result.message, steps=answer_steps(result)
+            )
 
     @app.get("/api/agent-runs/{agent_run_id}", responses=ERRORS)
     def get_agent_run(agent_run_id: uuid.UUID, owner: Owner) -> AgentRun:
