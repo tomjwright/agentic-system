@@ -146,7 +146,8 @@ def end_session(engine: Engine, token: str) -> None:
 
 
 def end_sessions_of_removed_owners(engine: Engine, allowed_ids: set[int]) -> None:
-    """Changing OWNER_GITHUB_IDS restarts the API, so a removed owner is signed out here."""
+    """Changing OWNER_GITHUB_IDS restarts the API. Deleting a removed owner's sessions here
+    means re-adding them later does not bring an old cookie back to life."""
     allowed_owners = [f"github:{user_id}" for user_id in allowed_ids]
     with Session(engine) as session:
         session.execute(
@@ -216,9 +217,19 @@ class Auth:
         if token:
             with Session(self.engine) as session:
                 record = session.get(OwnerSessionRecord, hashed(token))
-                if record is not None and record.expires_at > datetime.now(UTC):
+                if (
+                    record is not None
+                    and record.expires_at > datetime.now(UTC)
+                    and self.allowed(record.owner_id)
+                ):
                     return record.owner_id, record.csrf_token
         raise AuthError(401, "not_signed_in", "Sign in first")
+
+    def allowed(self, owner_id: str) -> bool:
+        """Checked on every request, so an owner taken off OWNER_GITHUB_IDS is signed out on
+        every instance, including an old one still serving during a deploy."""
+        allowed_owners = [f"github:{user_id}" for user_id in self.github.allowed_ids]
+        return owner_id in allowed_owners
 
     def check_run_budget(self, session: Session, owner_id: str) -> None:
         """Refuse a new run once the owner started runs_per_day in the last 24 hours."""

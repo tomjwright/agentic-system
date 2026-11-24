@@ -26,6 +26,10 @@ FAKE_TOKEN = "fake-onemap-token-for-tests"
 FAKE_HEIGIT_KEY = "fake-heigit-key-for-tests"
 FAKE_GITHUB_SECRET = "fake-github-secret-for-tests"
 TOM_GITHUB_ID = 119127762
+# Session owners are "github:<id>"; these three ids are on the test allowlist.
+TOM = f"github:{TOM_GITHUB_ID}"
+SOMEONE = "github:2"
+LOCAL_OWNER = "github:3"
 API_DIR = Path(__file__).parent.parent
 RESTRICTED_WAYS = load_restricted_ways()
 
@@ -79,8 +83,9 @@ def api_with(
     smoke_token_sha256: str | None = None,
     requests_per_minute: int = 1000,
     runs_per_day: int = 1000,
+    allowed_ids: frozenset[int] = frozenset({TOM_GITHUB_ID, 2, 3}),
 ) -> TestClient:
-    """An API whose providers answer from recordings, signed in as "local-owner"."""
+    """An API whose providers answer from recordings, signed in as LOCAL_OWNER."""
     onemap = OneMap(httpx.Client(transport=handler), token=token, retry_wait_seconds=0)
     heigit_http = httpx.Client(transport=httpx.MockTransport(heigit_handler))
     heigit = Heigit(heigit_http, heigit_key, request_gap_seconds=0, retry_wait_seconds=0)
@@ -89,7 +94,7 @@ def api_with(
         client_id="test-client-id",
         client_secret=FAKE_GITHUB_SECRET,
         callback_url="https://testserver/api/auth/callback",
-        allowed_ids={TOM_GITHUB_ID, 2},
+        allowed_ids=set(allowed_ids),
     )
     auth = Auth(
         engine,
@@ -101,7 +106,7 @@ def api_with(
     )
     app = create_app(onemap, engine, auth, heigit=heigit, restricted_ways=RESTRICTED_WAYS)
     client = TestClient(app, base_url="https://testserver")
-    client.headers.update(as_owner(client, "local-owner"))
+    client.headers.update(as_owner(client, LOCAL_OWNER))
     return client
 
 

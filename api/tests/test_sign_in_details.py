@@ -25,7 +25,7 @@ from route_api.auth import (
     create_session,
 )
 from route_api.db import GenerationRunRecord
-from tests.conftest import FAKE_GITHUB_SECRET, TOM_GITHUB_ID, api_with, as_owner
+from tests.conftest import FAKE_GITHUB_SECRET, LOCAL_OWNER, TOM_GITHUB_ID, api_with, as_owner
 from tests.recorded_onemap import recorded_response
 from tests.test_auth import STRANGER_ID, anonymous, client_for
 
@@ -214,7 +214,7 @@ def test_a_configured_smoke_token_leaves_cookie_sessions_working(clean_engine: E
         headers={"Authorization": "Bearer synthetic-smoke-token"},
     )
 
-    assert me.json()["owner_id"] == "local-owner"
+    assert me.json()["owner_id"] == LOCAL_OWNER
     assert smoke_me.json() == {"owner_id": "smoke", "csrf_token": ""}
     assert smoke_write.json()["error"] == {
         "code": "read_only",
@@ -228,7 +228,7 @@ def test_a_bearer_token_is_ignored_when_no_smoke_token_is_configured(clean_engin
     me = api.get("/api/auth/me", headers={"Authorization": "Bearer guessed"})
 
     assert me.status_code == 200
-    assert me.json()["owner_id"] == "local-owner"
+    assert me.json()["owner_id"] == LOCAL_OWNER
 
 
 def test_a_run_started_over_a_day_ago_no_longer_counts_against_the_daily_limit(
