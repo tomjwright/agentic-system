@@ -42,8 +42,14 @@ class Interpretation(BaseModel):
     )
 
 
+ClarificationReason = Literal[
+    "missing_activity", "missing_distance", "missing_start", "conflict", "distance_out_of_limits"
+]
+
+
 class Clarification(BaseModel):
-    reason: Literal["missing_activity", "missing_distance", "missing_start"]
+    reason: ClarificationReason
+    details: list[str] = Field(default_factory=list)
 
 
 class RouteFacts(BaseModel):

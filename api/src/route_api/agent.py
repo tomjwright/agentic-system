@@ -29,12 +29,12 @@ from route_api.agent_models import (
     RunRequest,
     Verdict,
 )
-from route_api.contracts import DistanceTarget
+from route_api.contracts import Distance, DistanceTarget
 from route_api.generation import Generation, generate
 from route_api.geography import line_length_m
 from route_api.heigit import Heigit
 from route_api.restrictions import RestrictedWays
-from route_api.route_selection import distance_bounds
+from route_api.route_selection import DISTANCE_LIMITS_KM, distance_bounds, outside_activity_limits
 from route_api.runs import route_limitations, unknown_surface_share
 
 TIME_BUDGET_S = 90
@@ -246,6 +246,19 @@ def run_agent(
 
 def clarification_needed(request: RunRequest, heard: Interpretation) -> Clarification | None:
     """What must be asked before a route can be made, or None when nothing is missing."""
+    conflicts = []
+    if request.activity and heard.activity and request.activity != heard.activity:
+        conflicts.append(
+            f"the form says {ACTIVITY_NAMES[request.activity]}"
+            f" but your message says {ACTIVITY_NAMES[heard.activity]}"
+        )
+    if request.distance and heard.distance and request.distance != heard.distance:
+        conflicts.append(
+            f"the form says {distance_text(request.distance)}"
+            f" but your message says {distance_text(heard.distance)}"
+        )
+    if conflicts:
+        return Clarification(reason="conflict", details=conflicts)
     activity = request.activity or heard.activity
     distance = request.distance or heard.distance
     if activity is None:
@@ -254,6 +267,10 @@ def clarification_needed(request: RunRequest, heard: Interpretation) -> Clarific
         return Clarification(reason="missing_distance")
     if request.start is None:
         return Clarification(reason="missing_start")
+    if outside_activity_limits(activity, distance):
+        lowest_km, highest_km = DISTANCE_LIMITS_KM[activity]
+        limit = f"{ACTIVITY_NAMES[activity].capitalize()} loops are {lowest_km} to {highest_km} km"
+        return Clarification(reason="distance_out_of_limits", details=[limit])
     return None
 
 
@@ -301,11 +318,7 @@ def fallback_message(clarification: Clarification | None, facts: RouteFacts | No
     if facts.outcome == "provider_error":
         return f"No route could be made: {facts.error_code}."
     name = ACTIVITY_NAMES[facts.activity]
-    requested = facts.requested
-    if isinstance(requested, DistanceTarget):
-        asked = f"{requested.target_km:g} km"
-    else:
-        asked = f"{requested.min_km:g}-{requested.max_km:g} km"
+    asked = distance_text(facts.requested)
     if facts.outcome == "no_route":
         sentences = [f"No acceptable {asked} {name} loop was found in {facts.tries} tries."]
     else:
@@ -319,8 +332,18 @@ def fallback_message(clarification: Clarification | None, facts: RouteFacts | No
 
 
 def clarification_message(clarification: Clarification) -> str:
+    if clarification.reason == "conflict":
+        return f"Please clarify: {'; '.join(clarification.details)}."
     if clarification.reason == "missing_activity":
         return "Is this a run or a road-cycling ride?"
     if clarification.reason == "missing_distance":
         return "What distance would you like? Give a target or a range in km."
-    return "Where should the loop start? Search for a place and confirm it first."
+    if clarification.reason == "missing_start":
+        return "Where should the loop start? Search for a place and confirm it first."
+    return f"{clarification.details[0]}. What distance would you like?"
+
+
+def distance_text(distance: Distance) -> str:
+    if isinstance(distance, DistanceTarget):
+        return f"{distance.target_km:g} km"
+    return f"{distance.min_km:g}-{distance.max_km:g} km"

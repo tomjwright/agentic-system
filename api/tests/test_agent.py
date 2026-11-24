@@ -21,7 +21,7 @@ from route_api.agent_models import (
     RunStart,
     Verdict,
 )
-from route_api.contracts import Activity, Distance, DistanceTarget
+from route_api.contracts import Activity, Distance, DistanceRange, DistanceTarget
 from route_api.heigit import Heigit
 from route_api.restrictions import load_restricted_ways
 from tests.fake_models import FakeModel
@@ -179,6 +179,28 @@ def test_a_missing_distance_is_a_judged_clarification() -> None:
     assert result.generation is None
 
 
+def test_a_form_and_message_that_disagree_are_asked_about() -> None:
+    ride = Interpretation(activity="road_cycling", distance=FIVE_KM)
+    agent = FakeModel(replies=[ride, "Running or cycling?", "Run or ride?"])
+    result = run(agent, FakeModel(replies=[REJECTED, REJECTED]), brief="ride 5k")
+
+    assert result.clarification is not None
+    assert result.clarification.reason == "conflict"
+    assert result.message == (
+        "Please clarify: the form says running but your message says road cycling."
+    )
+
+
+def test_a_distance_outside_the_activity_limits_is_asked_about() -> None:
+    far = Interpretation(activity="running", distance=DistanceTarget(kind="target", target_km=80))
+    agent = FakeModel(replies=[far, ConnectionError("down")])
+    result = run(agent, FakeModel(), brief="an 80 km run")
+
+    assert result.clarification is not None
+    assert result.clarification.reason == "distance_out_of_limits"
+    assert result.message == "Running loops are 1 to 50 km. What distance would you like?"
+
+
 def test_unsupported_preferences_are_disclosed_in_the_fallback() -> None:
     shaded = Interpretation(activity="running", distance=FIVE_KM, preferences=["shaded", "quiet"])
     agent = FakeModel(replies=[shaded, BAD_DRAFT, BAD_DRAFT])
@@ -314,6 +336,14 @@ def test_unanswered_questions_fall_back_to_fixed_wording() -> None:
     )
 
 
+def test_a_distance_in_the_form_and_message_that_disagree_is_asked_about() -> None:
+    form_range = DistanceRange(kind="range", min_km=8, max_km=12.5)
+    agent = FakeModel(replies=[RUN_5K, ConnectionError()])
+    result = run(agent, FakeModel(), distance=form_range)
+
+    assert result.message == ("Please clarify: the form says 8-12.5 km but your message says 5 km.")
+
+
 def test_the_form_fills_what_the_message_leaves_out() -> None:
     agent = FakeModel(replies=[Interpretation(), GOOD_DRAFT])
     result = run(agent, FakeModel(replies=[APPROVED]), brief="a loop", distance=FIVE_KM)
@@ -322,6 +352,18 @@ def test_the_form_fills_what_the_message_leaves_out() -> None:
     assert result.facts is not None
     assert result.facts.activity == "running"
     assert result.facts.duration_minutes == 63
+
+
+def test_both_disagreements_are_asked_about_together() -> None:
+    ride = Interpretation(activity="road_cycling", distance=FIVE_KM)
+    agent = FakeModel(replies=[ride, ConnectionError()])
+    ten_km = DistanceTarget(kind="target", target_km=10)
+    result = run(agent, FakeModel(), distance=ten_km)
+
+    assert result.message == (
+        "Please clarify: the form says running but your message says road cycling;"
+        " the form says 10 km but your message says 5 km."
+    )
 
 
 def test_a_ride_is_checked_for_restricted_roads() -> None:
