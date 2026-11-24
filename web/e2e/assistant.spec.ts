@@ -76,7 +76,7 @@ test("answer the assistant's question, then get its judged loop as the stored GP
   await expect(assistant).toContainText("Here is a 5.26 km running loop from Avenue South Residence.");
   await expect(assistant.getByRole("list", { name: "Assistant steps" }).getByRole("listitem")).toHaveText([
     "Read your message",
-    "Generated a loop: 2 tries",
+    "Tried 2 loops from HeiGIT",
     "Drafted an answer",
     "Judge approved it",
   ]);
@@ -122,4 +122,28 @@ test("a failed assistant run is shown as an error", async ({ page }) => {
   await assistant.getByRole("button", { name: "Ask", exact: true }).click();
 
   await expect(assistant.getByRole("alert")).toHaveText("The route assistant failed; try again");
+});
+
+test("an assistant run with no accepted loop says so in its steps", async ({ page }) => {
+  const steps = [
+    { name: "read_request" },
+    { name: "generated_route", tries: 5 },
+    { name: "fallback", reason: "no_route" },
+  ];
+  const answer = {
+    message: "No acceptable 1 km running loop was found in 5 tries.",
+    run: { kind: "no_route", generation_run_id: null },
+    steps,
+  };
+  await page.route("**/agent-runs", (route) => route.fulfill({ json: answer }));
+  const assistant = page.locator(".assistant");
+  await assistant.getByLabel("Ask the route assistant").fill("a 1k run");
+  await assistant.getByRole("button", { name: "Ask", exact: true }).click();
+
+  await expect(assistant.getByRole("list", { name: "Assistant steps" }).getByRole("listitem")).toHaveText([
+    "Read your message",
+    "Tried 5 loops from HeiGIT",
+    "No loop was accepted, so it answered from the measured facts",
+  ]);
+  await expect(page.locator(".result")).toHaveCount(0);
 });

@@ -27,7 +27,10 @@ function stepText(step: AgentStep): string {
     return `Asked you to clarify: ${reason}`;
   }
   if (step.name === "generated_route") {
-    return `Generated a loop: ${step.tries} ${step.tries === 1 ? "try" : "tries"}`;
+    if (step.tries === 0) {
+      return "Could not get a loop from HeiGIT";
+    }
+    return `Tried ${step.tries} ${step.tries === 1 ? "loop" : "loops"} from HeiGIT`;
   }
   if (step.name === "drafted") {
     return "Drafted an answer";
@@ -37,6 +40,9 @@ function stepText(step: AgentStep): string {
   }
   if (step.name === "repaired") {
     return "Redrafted it with the judge's problems";
+  }
+  if (step.reason === "no_route") {
+    return "No loop was accepted, so it answered from the measured facts";
   }
   return `Answered from the measured facts instead: ${reason}`;
 }
