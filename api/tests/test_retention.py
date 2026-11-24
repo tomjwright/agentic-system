@@ -16,7 +16,7 @@ from route_api.db import (
     RouteRequestRecord,
 )
 from route_api.main import app_from_env
-from route_api.retention import ROUTE_REQUEST_DAYS, purge_expired
+from route_api.retention import E2E_ROUTE_REQUEST_HOURS, ROUTE_REQUEST_DAYS, purge_expired
 from tests.conftest import LOCAL_OWNER
 from tests.test_runs import AVENUE_SOUTH_BLOCK_11, confirm_start, start_run
 
@@ -47,6 +47,32 @@ def test_old_route_requests_go_with_everything_under_them(api: TestClient) -> No
     assert count(engine, RouteRequestRecord) == 1
     assert count(engine, GenerationRunRecord) == 1
     assert count(engine, RouteCandidateRecord) > 0
+
+
+def test_the_staged_browser_tests_route_requests_go_after_a_day(api: TestClient) -> None:
+    for _ in range(3):
+        generate_5km(api)
+    engine = api.app.state.engine  # type: ignore[attr-defined]
+    now = datetime.now(UTC)
+    with Session(engine) as session, session.begin():
+        ids = session.scalars(select(RouteRequestRecord.id)).all()
+        ages = {
+            ids[0]: ("e2e", E2E_ROUTE_REQUEST_HOURS + 1),
+            ids[1]: ("e2e", E2E_ROUTE_REQUEST_HOURS - 1),
+            ids[2]: (LOCAL_OWNER, E2E_ROUTE_REQUEST_HOURS + 1),
+        }
+        for request_id, (owner, hours) in ages.items():
+            session.execute(
+                update(RouteRequestRecord)
+                .where(RouteRequestRecord.id == request_id)
+                .values(owner_id=owner, created_at=now - timedelta(hours=hours))
+            )
+
+    purge_expired(engine)
+
+    with Session(engine) as session:
+        kept = set(session.scalars(select(RouteRequestRecord.id)).all())
+    assert kept == {ids[1], ids[2]}
 
 
 def test_expired_sign_ins_are_deleted(api: TestClient) -> None:

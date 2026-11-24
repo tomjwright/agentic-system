@@ -81,6 +81,7 @@ def api_with(
     heigit_key: str | None = FAKE_HEIGIT_KEY,
     github: httpx.MockTransport | None = None,
     smoke_token_sha256: str | None = None,
+    e2e_token_sha256: str | None = None,
     requests_per_minute: int = 1000,
     runs_per_day: int = 1000,
     allowed_ids: frozenset[int] = frozenset({TOM_GITHUB_ID, 2, 3}),
@@ -101,6 +102,7 @@ def api_with(
         oauth,
         app_origin="https://testserver",
         smoke_token_sha256=smoke_token_sha256,
+        e2e_token_sha256=e2e_token_sha256,
         requests_per_minute=requests_per_minute,
         runs_per_day=runs_per_day,
     )
