@@ -145,6 +145,17 @@ def end_session(engine: Engine, token: str) -> None:
         session.commit()
 
 
+def end_sessions_of_removed_owners(engine: Engine, allowed_ids: set[int]) -> None:
+    """Changing OWNER_GITHUB_IDS restarts the API. Deleting a removed owner's sessions here
+    means re-adding them later does not bring an old cookie back to life."""
+    allowed_owners = [f"github:{user_id}" for user_id in allowed_ids]
+    with Session(engine) as session:
+        session.execute(
+            delete(OwnerSessionRecord).where(OwnerSessionRecord.owner_id.not_in(allowed_owners))
+        )
+        session.commit()
+
+
 class RequestLimit:
     """At most `per_minute` requests per owner in any 60 seconds (one API instance)."""
 
@@ -244,6 +255,7 @@ def auth_from_env(engine: Engine) -> Auth:
     for part in os.environ.get("OWNER_GITHUB_IDS", "119127762").split(","):
         if part.strip():
             allowed_ids.add(int(part))
+    end_sessions_of_removed_owners(engine, allowed_ids)
     github = GitHubOAuth(
         httpx.Client(),
         client_id=os.environ.get("GITHUB_CLIENT_ID"),
