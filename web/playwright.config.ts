@@ -1,7 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Browser tests run the real API and page, with OneMap search replaced by recorded
-// responses (api/tests/serve_recorded.py) and map tiles stubbed in the test itself.
+// Browser tests run the real API and page, with OneMap and HeiGIT replaced by recorded
+// responses, GitHub sign-in by a fake (api/tests/serve_recorded.py), and map tiles stubbed
+// in the test itself.
 const databaseUrl =
   process.env.E2E_DATABASE_URL ?? "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/routes_e2e";
 
@@ -18,8 +19,8 @@ export default defineConfig({
     {
       command: "uv run alembic upgrade head && uv run python -m tests.serve_recorded",
       cwd: "../api",
-      env: { DATABASE_URL: databaseUrl, PORT: "8001" },
-      url: "http://127.0.0.1:8001/docs",
+      env: { DATABASE_URL: databaseUrl, PORT: "8001", APP_ORIGIN: "http://127.0.0.1:3001" },
+      url: "http://127.0.0.1:8001/api/health",
       reuseExistingServer: false,
     },
     {

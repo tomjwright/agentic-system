@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 
 import { expect, type Page, test } from "@playwright/test";
 
+import { signIn } from "./sign-in";
+
 const BLANK_TILE = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=",
   "base64",
@@ -20,7 +22,7 @@ async function stubUpstreams(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   await stubUpstreams(page);
-  await page.goto("/");
+  await signIn(page);
   await page.getByLabel("Search for a place, or tap the map").fill("avenue south residence");
   const matches = page.getByRole("list", { name: "Matching places" }).getByRole("button");
   await matches.filter({ hasText: "11 SILAT AVENUE" }).click();

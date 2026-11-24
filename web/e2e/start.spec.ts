@@ -1,5 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
+import { signIn } from "./sign-in";
+
 const BLANK_TILE = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=",
   "base64",
@@ -17,7 +19,7 @@ async function stubOneMap(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   await stubOneMap(page);
-  await page.goto("/");
+  await signIn(page);
 });
 
 test("plural name shows the Bedok mismatch rather than choosing it", async ({ page }) => {

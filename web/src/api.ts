@@ -7,6 +7,10 @@ export type RouteRequest = components["schemas"]["RouteRequest"];
 export type RouteRequestCreate = components["schemas"]["RouteRequestCreate"];
 export type Activity = RouteRequestCreate["activity"];
 export type ErrorResponse = components["schemas"]["ErrorResponse"];
+export type SignedIn = components["schemas"]["SignedIn"];
+
+// The API refuses any change that does not echo the session's CSRF token.
+let csrfToken = "";
 
 export class ApiError extends Error {
   constructor(
@@ -20,7 +24,7 @@ export class ApiError extends Error {
 async function call<T>(path: string, init: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
   });
   const body = await response.json();
   if (!response.ok) {
@@ -28,6 +32,34 @@ async function call<T>(path: string, init: RequestInit): Promise<T> {
     throw new ApiError(error.code, error.message);
   }
   return body as T;
+}
+
+export const SIGN_IN_URL = "/api/auth/login";
+
+// The signed-in owner, or null when the browser has no session yet.
+export async function getSignedIn(): Promise<SignedIn | null> {
+  try {
+    const signedIn = await call<SignedIn>("/api/auth/me", { method: "GET" });
+    csrfToken = signedIn.csrf_token;
+    return signedIn;
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "not_signed_in") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function signOut(): Promise<void> {
+  const response = await fetch("/api/auth/logout", {
+    method: "POST",
+    headers: { "X-CSRF-Token": csrfToken },
+  });
+  if (!response.ok) {
+    const error = ((await response.json()) as ErrorResponse).error;
+    throw new ApiError(error.code, error.message);
+  }
+  csrfToken = "";
 }
 
 export function searchPlaces(query: string, signal: AbortSignal): Promise<PlaceSearchResponse> {
