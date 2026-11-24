@@ -1,28 +1,42 @@
-"""The HTTP API: place search, start confirmation, owner-scoped route requests, and
-generating, inspecting and exporting a running loop.
+"""The HTTP API: GitHub sign-in, place search, start confirmation, owner-scoped route
+requests, and generating, inspecting and exporting a loop.
 
-Owner identity (local development only): there is no sign-in yet. The caller's owner
-is the `X-Owner-Id` header, or LOCAL_OWNER_ID when the header is missing, so anyone
-who can reach the API can claim any owner. Issue #5 replaces this with managed sign-in
-before the app is hosted. Keep the API on localhost until then.
+Every endpoint except health, readiness and the sign-in redirects needs a signed-in owner
+(route_api.auth). There is no CORS: the page reaches the API through its own origin.
 """
 
 import os
 import re
+import secrets
 import time
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated, Any
 
 import httpx
-from fastapi import FastAPI, Header, Request, Response
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+from fastapi import Cookie, Depends, FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
-from sqlalchemy import Engine, create_engine, select
+from fastapi.responses import JSONResponse, RedirectResponse
+from sqlalchemy import Engine, create_engine, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from route_api.auth import (
+    LOGIN_COOKIE,
+    LOGIN_SECONDS,
+    SAFE_METHODS,
+    SESSION_COOKIE,
+    SESSION_DAYS,
+    Auth,
+    AuthError,
+    auth_from_env,
+    create_session,
+    end_session,
+)
 from route_api.contracts import (
     Candidate,
     ConfirmedStart,
@@ -37,6 +51,7 @@ from route_api.contracts import (
     RunCreate,
     SearchOutcome,
     SelectedRoute,
+    SignedIn,
 )
 from route_api.db import GenerationRunRecord, RouteRequestRecord
 from route_api.generation import generate
@@ -61,14 +76,19 @@ from route_api.telemetry import setup_tracing, tracer
 
 ID_PATTERN = r"^[A-Za-z0-9._-]{1,64}$"
 ACTIVITY_NAMES = {"running": "running", "road_cycling": "road cycling"}
+MAX_BODY_BYTES = 8192
+MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
 ERRORS: dict[int | str, dict[str, Any]] = {
+    401: {"model": ErrorResponse},
+    403: {"model": ErrorResponse},
     404: {"model": ErrorResponse},
     409: {"model": ErrorResponse},
     422: {"model": ErrorResponse},
     502: {"model": ErrorResponse},
+    413: {"model": ErrorResponse},
+    429: {"model": ErrorResponse},
     503: {"model": ErrorResponse},
 }
-OwnerHeader = Annotated[str | None, Header(alias="X-Owner-Id", pattern=ID_PATTERN)]
 
 
 class ApiError(Exception):
@@ -123,14 +143,34 @@ def owned_run(session: Session, owner: str, run_id: uuid.UUID) -> GenerationRunR
     return run
 
 
+def migration_head() -> str | None:
+    config = Config()
+    config.set_main_option("script_location", str(MIGRATIONS))
+    return ScriptDirectory.from_config(config).get_current_head()
+
+
 def create_app(
     onemap: OneMap,
     engine: Engine,
-    local_owner: str,
+    auth: Auth,
     heigit: Heigit,
     restricted_ways: RestrictedWays,
 ) -> FastAPI:
-    app = FastAPI(title="Singapore route creator API", version="0.1.0")
+    app = FastAPI(
+        title="Singapore route creator API",
+        version="0.1.0",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
+    app.state.engine = engine
+    head = migration_head()
+
+    def current_owner(request: Request) -> str:
+        owner_id, _ = auth.owner(request)
+        return owner_id
+
+    Owner = Annotated[str, Depends(current_owner)]
 
     @app.middleware("http")
     async def log_request(
@@ -141,8 +181,17 @@ def create_app(
             request_id = uuid.uuid4().hex
         request.state.request_id = request_id
         started = time.monotonic()
-        response = await call_next(request)
+        length = request.headers.get("Content-Length", "0")
+        if request.method in SAFE_METHODS:
+            response = await call_next(request)
+        elif "Transfer-Encoding" in request.headers or not length.isdigit():
+            response = error_response(411, "length_required", "Send a Content-Length")
+        elif int(length) > MAX_BODY_BYTES:
+            response = error_response(413, "payload_too_large", "The request body is too large")
+        else:
+            response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
+        response.headers["Cache-Control"] = "no-store"
         log_event(
             "request",
             request_id=request_id,
@@ -163,6 +212,101 @@ def create_app(
     async def api_error(request: Request, error: ApiError) -> JSONResponse:
         return error_response(error.status, error.code, str(error))
 
+    @app.exception_handler(AuthError)
+    async def auth_error(request: Request, error: AuthError) -> JSONResponse:
+        if error.status in (401, 403, 429):
+            log_event("auth_refused", request_id=request.state.request_id, code=error.code)
+        return error_response(error.status, error.code, str(error))
+
+    @app.get("/api/health")
+    def health() -> dict[str, str]:
+        """The process is up. Says nothing about the database or providers."""
+        return {"status": "ok"}
+
+    @app.get("/api/ready", responses={503: {}})
+    def ready() -> JSONResponse:
+        """Ready for traffic: database reachable, migrations current, providers configured."""
+        missing = []
+        if not onemap.token:
+            missing.append("ONEMAP_API_TOKEN")
+        if not heigit.configured:
+            missing.append("HEIGIT_API_KEY")
+        if not auth.github.configured:
+            missing.append("GITHUB_CLIENT_ID/GITHUB_CLIENT_SECRET")
+        database = "ok"
+        migrations = "behind"
+        try:
+            with engine.connect() as connection:
+                applied = connection.execute(text("SELECT version_num FROM alembic_version"))
+                if applied.scalar() == head:
+                    migrations = "current"
+        except Exception:  # any database failure means not ready
+            database = "unavailable"
+        body: dict[str, Any] = {"status": "ready", "database": database, "migrations": migrations}
+        if missing or database != "ok" or migrations != "current":
+            body["status"] = "not_ready"
+            body["missing"] = missing
+            return JSONResponse(body, status_code=503)
+        return JSONResponse(body)
+
+    @app.get("/api/auth/login", status_code=302, response_class=RedirectResponse)
+    def login() -> RedirectResponse:
+        """Send the browser to GitHub with a fresh state and PKCE verifier."""
+        if not auth.github.configured:
+            raise AuthError(503, "sign_in_not_configured", "Sign-in is not configured")
+        state = secrets.token_urlsafe(32)
+        verifier = secrets.token_urlsafe(48)
+        response = RedirectResponse(auth.github.login_url(state, verifier), status_code=302)
+        response.set_cookie(
+            LOGIN_COOKIE,
+            f"{state}.{verifier}",
+            max_age=LOGIN_SECONDS,
+            path="/",
+            secure=True,
+            httponly=True,
+            samesite="lax",
+        )
+        return response
+
+    @app.get("/api/auth/callback", status_code=302, response_class=RedirectResponse)
+    def callback(
+        code: str = "",
+        state: str = "",
+        started: Annotated[str, Cookie(alias=LOGIN_COOKIE)] = "",
+    ) -> RedirectResponse:
+        """GitHub sends the browser back here; an allowlisted account gets a session."""
+        expected_state, _, verifier = started.partition(".")
+        if not expected_state or not secrets.compare_digest(state, expected_state):
+            raise AuthError(400, "invalid_state", "Sign-in expired or was not started here")
+        user_id = auth.github.allowed_user_id(code, verifier)
+        token, _ = create_session(engine, f"github:{user_id}")
+        log_event("signed_in", github_id=user_id)
+        response = RedirectResponse("/", status_code=302)
+        response.delete_cookie(LOGIN_COOKIE, path="/", secure=True, httponly=True)
+        response.set_cookie(
+            SESSION_COOKIE,
+            token,
+            max_age=SESSION_DAYS * 24 * 3600,
+            path="/",
+            secure=True,
+            httponly=True,
+            samesite="lax",
+        )
+        return response
+
+    @app.get("/api/auth/me", responses=ERRORS)
+    def me(request: Request) -> SignedIn:
+        """Who is signed in, and the CSRF token to send with every change."""
+        owner_id, csrf = auth.owner(request)
+        return SignedIn(owner_id=owner_id, csrf_token=csrf)
+
+    @app.post("/api/auth/logout", status_code=204, responses=ERRORS, response_class=Response)
+    def logout(request: Request, owner: Owner) -> Response:
+        end_session(engine, request.cookies.get(SESSION_COOKIE, ""))
+        response = Response(status_code=204)
+        response.delete_cookie(SESSION_COOKIE, path="/", secure=True, httponly=True)
+        return response
+
     @app.exception_handler(ProviderError)
     async def provider_failed(request: Request, error: ProviderError) -> JSONResponse:
         log_event(
@@ -177,7 +321,7 @@ def create_app(
         return error_response(status, error.code, str(error))
 
     @app.post("/api/places/search", responses=ERRORS)
-    def search_places(body: PlaceSearchRequest) -> PlaceSearchResponse:
+    def search_places(body: PlaceSearchRequest, owner: Owner) -> PlaceSearchResponse:
         result = onemap.search(body.query)
         candidates = []
         for place in result.places:
@@ -202,11 +346,11 @@ def create_app(
         )
 
     @app.post("/api/route-requests", status_code=201, responses=ERRORS)
-    def create_route_request(body: RouteRequestCreate, owner: OwnerHeader = None) -> RouteRequest:
+    def create_route_request(body: RouteRequestCreate, owner: Owner) -> RouteRequest:
         now = datetime.now(UTC)
         record = RouteRequestRecord(
             id=uuid.uuid4(),
-            owner_id=owner or local_owner,
+            owner_id=owner,
             activity=body.activity,
             start_retrieved_at=now,
             created_at=now,
@@ -239,9 +383,9 @@ def create_app(
             return to_route_request(record)
 
     @app.get("/api/route-requests/{route_request_id}", responses=ERRORS)
-    def get_route_request(route_request_id: uuid.UUID, owner: OwnerHeader = None) -> RouteRequest:
+    def get_route_request(route_request_id: uuid.UUID, owner: Owner) -> RouteRequest:
         with Session(engine) as session:
-            record = find_route_request(session, owner or local_owner, route_request_id)
+            record = find_route_request(session, owner, route_request_id)
             return to_route_request(record)
 
     @app.post(
@@ -260,14 +404,13 @@ def create_app(
         body: RunCreate,
         request: Request,
         response: Response,
-        owner: OwnerHeader = None,
+        owner: Owner,
     ) -> GenerationRun:
         """Generate a loop now and return the finished run.
 
         Retrying with the same operation_id returns the run already recorded (HTTP 200),
         even while it is still generating; a different distance is refused.
         """
-        owner = owner or local_owner
         bounds = distance_bounds(body.distance)
         with Session(engine) as session:
             route_request = find_route_request(session, owner, route_request_id)
@@ -284,6 +427,7 @@ def create_app(
                     f"distance: {ACTIVITY_NAMES[activity]} loops are {lowest_km} to"
                     f" {highest_km} km",
                 )
+            auth.check_run_budget(session, owner)
             if not heigit.configured:
                 raise ApiError(503, "provider_not_configured", "Route generation is not configured")
             start = (route_request.start_lon, route_request.start_lat)
@@ -355,14 +499,14 @@ def create_app(
         return found
 
     @app.get("/api/runs/{run_id}", responses=ERRORS)
-    def get_run(run_id: uuid.UUID, owner: OwnerHeader = None) -> GenerationRun:
+    def get_run(run_id: uuid.UUID, owner: Owner) -> GenerationRun:
         with Session(engine) as session:
-            return to_generation_run(session, owned_run(session, owner or local_owner, run_id))
+            return to_generation_run(session, owned_run(session, owner, run_id))
 
     @app.get("/api/runs/{run_id}/route", responses=ERRORS)
-    def get_selected_route(run_id: uuid.UUID, owner: OwnerHeader = None) -> SelectedRoute:
+    def get_selected_route(run_id: uuid.UUID, owner: Owner) -> SelectedRoute:
         with Session(engine) as session:
-            run = owned_run(session, owner or local_owner, run_id)
+            run = owned_run(session, owner, run_id)
             selected = find_selected(session, run)
             if selected is None:
                 raise ApiError(409, "no_route_selected", "This run has no selected route")
@@ -373,9 +517,9 @@ def create_app(
         responses={**ERRORS, 200: {"content": {"application/gpx+xml": {}}}},
         response_class=Response,
     )
-    def export_gpx(run_id: uuid.UUID, owner: OwnerHeader = None) -> Response:
+    def export_gpx(run_id: uuid.UUID, owner: Owner) -> Response:
         with Session(engine) as session:
-            run = owned_run(session, owner or local_owner, run_id)
+            run = owned_run(session, owner, run_id)
             selected = find_selected(session, run)
             if selected is None:
                 raise ApiError(409, "no_route_selected", "This run has no selected route")
@@ -400,15 +544,15 @@ def create_app(
 def app_from_env() -> FastAPI:
     """Entry point for uvicorn --factory.
 
-    Reads DATABASE_URL, ONEMAP_API_TOKEN, HEIGIT_API_KEY, LOCAL_OWNER_ID and, optionally,
-    OTEL_EXPORTER_OTLP_ENDPOINT.
+    Reads DATABASE_URL, ONEMAP_API_TOKEN, HEIGIT_API_KEY, the sign-in settings in
+    route_api.auth and, optionally, OTEL_EXPORTER_OTLP_ENDPOINT.
     """
     configure_logging()
     setup_tracing()
     onemap = OneMap(httpx.Client(), token=os.environ.get("ONEMAP_API_TOKEN"))
     heigit = Heigit(httpx.Client(), api_key=os.environ.get("HEIGIT_API_KEY"))
-    engine = create_engine(os.environ["DATABASE_URL"])
-    local_owner = os.environ.get("LOCAL_OWNER_ID", "local-owner")
+    # Neon suspends idle computes; pre-ping replaces connections it closed.
+    engine = create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
     return create_app(
-        onemap, engine, local_owner, heigit=heigit, restricted_ways=load_restricted_ways()
+        onemap, engine, auth_from_env(engine), heigit=heigit, restricted_ways=load_restricted_ways()
     )

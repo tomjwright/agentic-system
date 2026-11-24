@@ -8,6 +8,7 @@ import json
 import httpx
 from sqlalchemy import create_engine
 
+from route_api.auth import Auth, GitHubOAuth
 from route_api.heigit import Heigit
 from route_api.main import create_app
 from route_api.onemap import OneMap
@@ -19,9 +20,10 @@ def main() -> None:
     onemap = OneMap(httpx.Client(), token=None)
     heigit = Heigit(httpx.Client(), api_key=None)
     unused_ways = RestrictedWays(source="unused", ways=[])
-    app = create_app(
-        onemap, create_engine("sqlite://"), "unused", heigit=heigit, restricted_ways=unused_ways
-    )
+    engine = create_engine("sqlite://")
+    github = GitHubOAuth(httpx.Client(), None, None, "unused", allowed_ids=set())
+    auth = Auth(engine, github, app_origin="unused")
+    app = create_app(onemap, engine, auth, heigit=heigit, restricted_ways=unused_ways)
     print(json.dumps(app.openapi(), indent=2))
 
 

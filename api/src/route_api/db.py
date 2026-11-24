@@ -112,3 +112,15 @@ class SelectedRouteRecord(Base):
     )
     owner_id: Mapped[str] = mapped_column(String(64))
     selected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class OwnerSessionRecord(Base):
+    """A signed-in browser. Only the SHA-256 of its cookie token is stored."""
+
+    __tablename__ = "owner_sessions"
+
+    token_sha256: Mapped[str] = mapped_column(String(64), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(64), index=True)
+    csrf_token: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

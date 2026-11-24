@@ -6,9 +6,11 @@ import httpx
 import pytest
 from alembic import command
 from alembic.config import Config
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, text
 
+from route_api.auth import SESSION_COOKIE, Auth, GitHubOAuth, create_session
 from route_api.heigit import Heigit
 from route_api.main import create_app
 from route_api.onemap import OneMap
@@ -22,6 +24,8 @@ TEST_DATABASE_URL = os.environ.get(
 )
 FAKE_TOKEN = "fake-onemap-token-for-tests"
 FAKE_HEIGIT_KEY = "fake-heigit-key-for-tests"
+FAKE_GITHUB_SECRET = "fake-github-secret-for-tests"
+TOM_GITHUB_ID = 119127762
 API_DIR = Path(__file__).parent.parent
 RESTRICTED_WAYS = load_restricted_ways()
 
@@ -43,7 +47,7 @@ def engine() -> Iterator[Engine]:
 @pytest.fixture
 def clean_engine(engine: Engine) -> Engine:
     with engine.begin() as connection:
-        connection.execute(text("TRUNCATE route_requests CASCADE"))
+        connection.execute(text("TRUNCATE route_requests, owner_sessions CASCADE"))
     return engine
 
 
@@ -53,12 +57,46 @@ def api_with(
     token: str | None,
     heigit_handler: Callable[[httpx.Request], httpx.Response] = recorded_heigit.recorded_response,
     heigit_key: str | None = FAKE_HEIGIT_KEY,
+    github: httpx.MockTransport | None = None,
+    smoke_token_sha256: str | None = None,
+    requests_per_minute: int = 1000,
+    runs_per_day: int = 1000,
 ) -> TestClient:
+    """An API whose providers answer from recordings, signed in as "local-owner"."""
     onemap = OneMap(httpx.Client(transport=handler), token=token, retry_wait_seconds=0)
     heigit_http = httpx.Client(transport=httpx.MockTransport(heigit_handler))
     heigit = Heigit(heigit_http, heigit_key, request_gap_seconds=0, retry_wait_seconds=0)
-    app = create_app(onemap, engine, "local-owner", heigit=heigit, restricted_ways=RESTRICTED_WAYS)
-    return TestClient(app)
+    oauth = GitHubOAuth(
+        httpx.Client(transport=github or httpx.MockTransport(no_github)),
+        client_id="test-client-id",
+        client_secret=FAKE_GITHUB_SECRET,
+        callback_url="https://testserver/api/auth/callback",
+        allowed_ids={TOM_GITHUB_ID, 2},
+    )
+    auth = Auth(
+        engine,
+        oauth,
+        app_origin="https://testserver",
+        smoke_token_sha256=smoke_token_sha256,
+        requests_per_minute=requests_per_minute,
+        runs_per_day=runs_per_day,
+    )
+    app = create_app(onemap, engine, auth, heigit=heigit, restricted_ways=RESTRICTED_WAYS)
+    client = TestClient(app, base_url="https://testserver")
+    client.headers.update(as_owner(client, "local-owner"))
+    return client
+
+
+def no_github(request: httpx.Request) -> httpx.Response:
+    raise AssertionError(f"unexpected GitHub call to {request.url}")
+
+
+def as_owner(api: TestClient, owner: str) -> dict[str, str]:
+    """Headers of a browser signed in as this owner (sign-in itself is in test_auth.py)."""
+    app = api.app
+    assert isinstance(app, FastAPI)
+    token, csrf = create_session(app.state.engine, owner)
+    return {"Cookie": f"{SESSION_COOKIE}={token}", "X-CSRF-Token": csrf}
 
 
 @pytest.fixture
