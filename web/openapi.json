@@ -1884,7 +1884,8 @@
               "operation_conflict",
               "no_route_selected",
               "generation_interrupted",
-              "agent_not_configured"
+              "agent_not_configured",
+              "agent_failed"
             ],
             "title": "Code"
           },

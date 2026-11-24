@@ -26,6 +26,7 @@ ErrorCode = Literal[
     "no_route_selected",
     "generation_interrupted",
     "agent_not_configured",
+    "agent_failed",
 ]
 
 

@@ -12,6 +12,7 @@ from uuid import uuid4
 
 import httpx
 import httpx2
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
@@ -215,3 +216,38 @@ def test_old_agent_runs_go_with_their_route_request(clean_engine: Engine) -> Non
 
     with clean_engine.connect() as connection:
         assert connection.execute(text("SELECT count(*) FROM agent_runs")).scalar_one() == 0
+
+
+class Broken(Exception):
+    """An unexpected failure, carrying text that must not reach the user or the database."""
+
+
+def fail(*args: object) -> None:
+    raise Broken("secret detail: a 5k run from Avenue South")
+
+
+@pytest.mark.parametrize("failing", ["run_agent", "save_generation"])
+def test_an_unexpected_failure_finishes_the_run_as_failed(
+    clean_engine: Engine, monkeypatch: pytest.MonkeyPatch, failing: str
+) -> None:
+    api = agent_api(clean_engine, fake_models([RUN_5K, GOOD_DRAFT], [APPROVED]), runs_per_day=1)
+    request_id = confirm_start(api, AVENUE_SOUTH_BLOCK_11)
+    monkeypatch.setattr(f"route_api.main.{failing}", fail)
+
+    response = ask(api, request_id)
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "agent_failed"
+    assert "secret detail" not in response.text
+    with clean_engine.connect() as connection:
+        stored = connection.execute(text("SELECT * FROM agent_runs")).mappings().one()
+        generation_runs = connection.execute(text("SELECT count(*) FROM generation_runs"))
+        assert generation_runs.scalar_one() == 0
+    assert (stored["status"], stored["kind"], stored["generation_run_id"]) == (
+        "finished",
+        "failed",
+        None,
+    )
+    assert stored["finished_at"] is not None
+    assert "secret detail" not in str(dict(stored))
+    assert ask(api, request_id).status_code == 429

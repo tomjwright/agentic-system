@@ -27,7 +27,13 @@ from sqlalchemy.orm import Session
 
 from route_api.agent import run_agent
 from route_api.agent_models import RunRequest, RunStart
-from route_api.agent_runs import find_agent_run, finish_agent_run, new_agent_run, to_agent_run
+from route_api.agent_runs import (
+    fail_agent_run,
+    find_agent_run,
+    finish_agent_run,
+    new_agent_run,
+    to_agent_run,
+)
 from route_api.auth import (
     LOGIN_COOKIE,
     LOGIN_SECONDS,
@@ -546,25 +552,40 @@ def create_app(
                 start=start,
             )
             started = time.monotonic()
-            result = run_agent(agent_request, models.agent, models.judge, heigit, restricted_ways)
-            if result.generation is not None and result.facts is not None:
-                restriction_data = None
-                if activity == "road_cycling":
-                    restriction_data = restricted_ways.source
-                generation_run = new_run(
-                    session,
-                    owner,
-                    route_request_id,
-                    result.facts.activity,
-                    restriction_data,
-                    run.id,
-                    result.facts.requested,
-                    distance_bounds(result.facts.requested),
+            try:
+                result = run_agent(
+                    agent_request, models.agent, models.judge, heigit, restricted_ways
                 )
-                save_generation(session, generation_run, result.generation)
-                run.generation_run_id = generation_run.id
-            finish_agent_run(run, result)
-            session.commit()
+                if result.generation is not None and result.facts is not None:
+                    restriction_data = None
+                    if activity == "road_cycling":
+                        restriction_data = restricted_ways.source
+                    generation_run = new_run(
+                        session,
+                        owner,
+                        route_request_id,
+                        result.facts.activity,
+                        restriction_data,
+                        run.id,
+                        result.facts.requested,
+                        distance_bounds(result.facts.requested),
+                    )
+                    save_generation(session, generation_run, result.generation)
+                    run.generation_run_id = generation_run.id
+                finish_agent_run(run, result)
+                session.commit()
+            except Exception as error:
+                session.rollback()
+                fail_agent_run(run)
+                session.commit()
+                log_event(
+                    "agent_failed",
+                    request_id=request.state.request_id,
+                    agent_run_id=str(run.id),
+                    error=type(error).__name__,
+                )
+                message = "The route assistant failed; try again"
+                raise ApiError(500, "agent_failed", message) from None
             log_event(
                 "agent_finished",
                 request_id=request.state.request_id,

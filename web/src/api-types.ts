@@ -462,7 +462,7 @@ export interface components {
              * Code
              * @enum {string}
              */
-            code: "invalid_request" | "outside_singapore" | "candidate_not_found" | "not_found" | "provider_not_configured" | "provider_unavailable" | "provider_rejected" | "provider_response_invalid" | "provider_quota_exhausted" | "operation_conflict" | "no_route_selected" | "generation_interrupted" | "agent_not_configured";
+            code: "invalid_request" | "outside_singapore" | "candidate_not_found" | "not_found" | "provider_not_configured" | "provider_unavailable" | "provider_rejected" | "provider_response_invalid" | "provider_quota_exhausted" | "operation_conflict" | "no_route_selected" | "generation_interrupted" | "agent_not_configured" | "agent_failed";
             /** Message */
             message: string;
         };

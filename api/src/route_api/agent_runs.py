@@ -47,6 +47,13 @@ def finish_agent_run(run: AgentRunRecord, result: AgentResult) -> None:
     run.finished_at = datetime.now(UTC)
 
 
+def fail_agent_run(run: AgentRunRecord) -> None:
+    """Record that the run ended in an unexpected error. The caller commits."""
+    run.status = "finished"
+    run.kind = "failed"
+    run.finished_at = datetime.now(UTC)
+
+
 def find_agent_run(session: Session, owner: str, run_id: uuid.UUID) -> AgentRunRecord | None:
     query = select(AgentRunRecord).where(
         AgentRunRecord.id == run_id, AgentRunRecord.owner_id == owner
