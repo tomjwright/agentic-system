@@ -12,14 +12,14 @@ issue #4 a road-cycling loop. There are no model calls.
    match (searched again on the server so the stored place is OneMap's, with its query,
    `source_id` and retrieval time) or a map point. Points off Singapore land are refused.
 3. `GET /api/route-requests/{id}` returns a request only to its owner.
-4. `POST /api/route-requests/{id}/runs` with `operation_id` (a UUID the client makes) and
-   a distance generates a loop for the request's activity and returns the finished run
-   (HTTP 201). The
-   distance is `{"kind": "target", "target_km": 5}` (any loop within 10% either side)
-   or `{"kind": "range", "min_km": 5, "max_km": 6}` (exact, no tolerance added): 1 to
-   50 km running, 5 to 100 km road cycling (else HTTP 422 `distance_invalid`). Each run adds a new immutable revision of the request. Sending the same
-   `operation_id` again returns the run already recorded (HTTP 200); with a different
-   distance it is HTTP 409 `operation_conflict`.
+4. `POST /api/route-requests/{id}/runs` with `operation_id` (a UUID the client makes)
+   and a distance generates a loop for the request's activity and returns the finished
+   run (HTTP 201). The distance is `{"kind": "target", "target_km": 5}` (any loop within
+   10% either side) or `{"kind": "range", "min_km": 5, "max_km": 6}` (exact, no
+   tolerance added): 1 to 50 km running, 5 to 100 km road cycling (else HTTP 422
+   `distance_invalid`). Each run adds a new immutable revision of the request. Sending
+   the same `operation_id` again returns the run already recorded (HTTP 200); with a
+   different distance it is HTTP 409 `operation_conflict`.
 5. `GET /api/runs/{id}` is the run: `status` (`generating`, `succeeded`, `no_route`,
    `failed`), the distance bounds, and every candidate with its seed or via points,
    requested length, measured distance and rejection reasons.
@@ -32,18 +32,19 @@ issue #4 a road-cycling loop. There are no model calls.
 ## How a loop is generated
 
 `generation.py` asks HeiGIT (`foot-walking` for running, `cycling-road` for road
-cycling, both avoiding ferries, cycling also steps) for at most 5 candidates, one at a time,
-2 s apart: round trips with seeds 1, 2, 3, ... and the requested length corrected by
-the last measured length (never over HeiGIT's 100 km round-trip limit); after 2 failed round trips it switches to a loop through
-two via points placed inland of the start (round trips from the coast can cross the
-sea); a via loop that returns keeps its bearing for the corrected length, one that fails
-turns. Cycling via points may snap up to 1 km to a road. `route_selection.py` rejects any candidate that is not closed (30 m), starts more
-than 200 m from the confirmed start, leaves Singapore (50 m), disagrees with HeiGIT's
-own distance by over 10%, or whose measured length is outside the bounds. A cycling
-candidate is also rejected if it rides along an expressway, expressway slip road, road
-tunnel or `bicycle=no` way (see below). The accepted
-one closest to the target wins; if none, the run is `no_route` with every reason.
-Nothing is ever moved, trimmed or rerouted to pass.
+cycling, both avoiding ferries, cycling also steps) for at most 5 candidates, one at a
+time, 2 s apart: round trips with seeds 1, 2, 3, ... and the requested length corrected
+by the last measured length (never over HeiGIT's 100 km round-trip limit); after 2
+failed round trips it switches to a loop through two via points placed inland of the
+start (round trips from the coast can cross the sea); a via loop that returns keeps its
+bearing for the corrected length, one that fails turns. Cycling via points may snap up
+to 1 km to a road. `route_selection.py` rejects any candidate that is not closed (30 m),
+starts more than 200 m from the confirmed start, leaves Singapore (50 m), disagrees with
+HeiGIT's own distance by over 10%, or whose measured length is outside the bounds. A
+cycling candidate is also rejected if it rides along an expressway, expressway slip
+road, road tunnel or `bicycle=no` way (see below). The accepted one closest to the
+target wins; if none, the run is `no_route` with every reason. Nothing is ever moved,
+trimmed or rerouted to pass.
 
 Generation runs inside the POST (at most about 2 minutes with 5 slow HeiGIT calls);
 it is not a durable background job. A run left `generating` for 10 minutes (the
