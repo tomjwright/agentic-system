@@ -30,6 +30,8 @@ class FakeHosts:
         # Each poll of the check runs pops the next answer; the last one repeats.
         self.check_polls: list[dict[str, str | None]] = [dict.fromkeys(REQUIRED, "success")]
         self.check_queries: list[httpx.QueryParams] = []
+        # Polls that fail before any answer: a network error to raise or a status to return.
+        self.check_failures: list[httpx.TransportError | int] = []
         self.other_app_checks: dict[str, str] = {}
         self.render_deploys = [
             {"deploy": {"id": "dep-x", "status": "deactivated"}},
@@ -61,6 +63,11 @@ class FakeHosts:
 
     def check_runs(self, request: httpx.Request) -> httpx.Response:
         self.check_queries.append(request.url.params)
+        if self.check_failures:
+            failure = self.check_failures.pop(0)
+            if isinstance(failure, int):
+                return httpx.Response(failure, json={"message": "unavailable"})
+            raise failure
         checks = self.check_polls[0]
         if len(self.check_polls) > 1:
             self.check_polls.pop(0)
@@ -212,6 +219,39 @@ def test_a_check_still_running_at_the_deadline_deploys_nothing(
     with pytest.raises(PromotionStopped, match="'web' has not finished; nothing deployed"):
         promote(hosts)
     assert no_waiting == [1, 1, 1]
+    assert hosts.changes == []
+
+
+@pytest.mark.parametrize(
+    "failure", [httpx.ConnectTimeout("timed out"), httpx.ReadError("reset"), 502, 503]
+)
+def test_an_unreachable_github_is_polled_again(
+    hosts: FakeHosts, failure: httpx.TransportError | int
+) -> None:
+    hosts.check_failures = [failure, failure]
+    promote(hosts)
+    assert len(hosts.check_queries) == 3
+    assert hosts.changes == ["render deploy abc123", "vercel promote dpl-new"]
+
+
+def test_github_unreachable_until_the_deadline_deploys_nothing(
+    hosts: FakeHosts, no_waiting: list[float]
+) -> None:
+    hosts.check_failures = [httpx.ConnectTimeout("timed out")] * 10
+    with pytest.raises(
+        PromotionStopped, match="could not read the checks \\(ConnectTimeout\\); nothing deployed"
+    ):
+        promote(hosts)
+    assert no_waiting == [1, 1, 1]
+    assert hosts.changes == []
+
+
+@pytest.mark.parametrize("status", [401, 403, 404, 422])
+def test_a_refused_check_query_deploys_nothing_at_once(hosts: FakeHosts, status: int) -> None:
+    hosts.check_failures = [status]
+    with pytest.raises(httpx.HTTPStatusError):
+        promote(hosts)
+    assert len(hosts.check_queries) == 1
     assert hosts.changes == []
 
 

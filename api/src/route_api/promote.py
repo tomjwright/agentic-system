@@ -149,7 +149,19 @@ class Promotion:
         s = self.settings
         waited = 0.0
         while True:
-            conclusions = self.check_conclusions()
+            try:
+                conclusions = self.check_conclusions()
+            except (httpx.TransportError, httpx.HTTPStatusError) as error:
+                # A network error or GitHub 5xx is asked again; any other refusal stops here.
+                if isinstance(error, httpx.HTTPStatusError) and error.response.status_code < 500:
+                    raise
+                if waited >= s.checks_timeout_seconds:
+                    raise PromotionStopped(
+                        f"could not read the checks ({type(error).__name__}); nothing deployed"
+                    ) from error
+                time.sleep(s.poll_seconds)
+                waited += s.poll_seconds
+                continue
             unfinished = []
             for name in s.required_checks:
                 conclusion = conclusions.get(name)
