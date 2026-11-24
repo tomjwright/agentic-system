@@ -85,6 +85,10 @@ class Settings:
     deploy_timeout_seconds: float = 20 * 60
 
 
+def now() -> float:
+    return time.monotonic()
+
+
 class Promotion:
     def __init__(self, http: httpx.Client, settings: Settings):
         self.http = http
@@ -147,7 +151,8 @@ class Promotion:
 
     def require_checks(self) -> None:
         s = self.settings
-        waited = 0.0
+        # Wall time, so slow failing requests count against the deadline too.
+        deadline = now() + s.checks_timeout_seconds
         while True:
             try:
                 conclusions = self.check_conclusions()
@@ -155,12 +160,11 @@ class Promotion:
                 # A network error or GitHub 5xx is asked again; any other refusal stops here.
                 if isinstance(error, httpx.HTTPStatusError) and error.response.status_code < 500:
                     raise
-                if waited >= s.checks_timeout_seconds:
+                if now() >= deadline:
                     raise PromotionStopped(
                         f"could not read the checks ({type(error).__name__}); nothing deployed"
                     ) from error
                 time.sleep(s.poll_seconds)
-                waited += s.poll_seconds
                 continue
             unfinished = []
             for name in s.required_checks:
@@ -173,12 +177,11 @@ class Promotion:
                     )
             if not unfinished:
                 return
-            if waited >= s.checks_timeout_seconds:
+            if now() >= deadline:
                 raise PromotionStopped(
                     f"required check {unfinished[0]!r} has not finished; nothing deployed"
                 )
             time.sleep(s.poll_seconds)
-            waited += s.poll_seconds
 
     def check_conclusions(self) -> dict[str, str | None]:
         """The latest conclusion of each check run on the commit, None while it runs. Only

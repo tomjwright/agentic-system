@@ -32,6 +32,7 @@ class FakeHosts:
         self.check_queries: list[httpx.QueryParams] = []
         # Polls that fail before any answer: a network error to raise or a status to return.
         self.check_failures: list[httpx.TransportError | int] = []
+        self.failure_seconds = 0.0
         self.other_app_checks: dict[str, str] = {}
         self.render_deploys = [
             {"deploy": {"id": "dep-x", "status": "deactivated"}},
@@ -65,6 +66,7 @@ class FakeHosts:
         self.check_queries.append(request.url.params)
         if self.check_failures:
             failure = self.check_failures.pop(0)
+            clock.seconds += self.failure_seconds
             if isinstance(failure, int):
                 return httpx.Response(failure, json={"message": "unavailable"})
             raise failure
@@ -186,8 +188,21 @@ def promote(hosts: FakeHosts, browser_tests: list[str] = PASSING_BROWSER_TESTS) 
 @pytest.fixture(autouse=True)
 def no_waiting(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     sleeps: list[float] = []
-    monkeypatch.setattr("route_api.promote.time.sleep", sleeps.append)
+
+    def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        clock.seconds += seconds
+
+    monkeypatch.setattr("route_api.promote.time.sleep", sleep)
+    monkeypatch.setattr("route_api.promote.now", lambda: clock.seconds)
     return sleeps
+
+
+class FakeClock:
+    seconds = 0.0
+
+
+clock = FakeClock()
 
 
 def test_a_healthy_release_is_promoted(hosts: FakeHosts) -> None:
@@ -243,6 +258,17 @@ def test_github_unreachable_until_the_deadline_deploys_nothing(
     ):
         promote(hosts)
     assert no_waiting == [1, 1, 1]
+    assert hosts.changes == []
+
+
+def test_slow_failing_requests_count_against_the_deadline(
+    hosts: FakeHosts, no_waiting: list[float]
+) -> None:
+    hosts.check_failures = [httpx.ConnectTimeout("timed out")] * 10
+    hosts.failure_seconds = 2
+    with pytest.raises(PromotionStopped, match="could not read the checks"):
+        promote(hosts)
+    assert no_waiting == [1]
     assert hosts.changes == []
 
 
