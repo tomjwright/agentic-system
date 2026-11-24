@@ -1,0 +1,36 @@
+name: provider-canary
+
+# Once a night, one real OneMap search and two real HeiGIT directions requests through the
+# API's own clients (api/src/route_api/canary.py), so a provider changing its answer fails
+# here, loudly, before users see it. The only workflow that calls a live provider.
+on:
+  schedule:
+    - cron: "41 19 * * *" # 03:41 in Singapore
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provider-canary
+  cancel-in-progress: false
+
+jobs:
+  provider-canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The key is an environment secret, and the environment only deploys from main.
+    environment: provider-canary
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+      - run: uv sync --locked
+      - name: Call OneMap and HeiGIT and parse their answers
+        env:
+          HEIGIT_API_KEY: ${{ secrets.HEIGIT_API_KEY }}
+        run: uv run python -m route_api.canary

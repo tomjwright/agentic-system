@@ -8,7 +8,7 @@ from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, create_engine, text
+from sqlalchemy import Engine, create_engine, make_url, text
 
 from route_api.auth import SESSION_COOKIE, Auth, GitHubOAuth, create_session
 from route_api.heigit import Heigit
@@ -35,14 +35,32 @@ RESTRICTED_WAYS = load_restricted_ways()
 
 
 @pytest.fixture(scope="session")
-def engine() -> Iterator[Engine]:
-    engine = create_engine(TEST_DATABASE_URL)
+def database_url() -> Iterator[str]:
+    """TEST_DATABASE_URL, or under mutmut, which runs mutants in parallel processes, a
+    database of this process's own on the same server."""
+    if "MUTANT_UNDER_TEST" not in os.environ:
+        yield TEST_DATABASE_URL
+        return
+    name = f"routes_mutant_{os.getpid()}"
+    server = create_engine(TEST_DATABASE_URL, isolation_level="AUTOCOMMIT")
+    with server.connect() as connection:
+        connection.execute(text(f"DROP DATABASE IF EXISTS {name}"))
+        connection.execute(text(f"CREATE DATABASE {name}"))
+    yield make_url(TEST_DATABASE_URL).set(database=name).render_as_string(hide_password=False)
+    with server.connect() as connection:
+        connection.execute(text(f"DROP DATABASE {name} WITH (FORCE)"))
+    server.dispose()
+
+
+@pytest.fixture(scope="session")
+def engine(database_url: str) -> Iterator[Engine]:
+    engine = create_engine(database_url)
     with engine.begin() as connection:
         connection.execute(text("DROP SCHEMA public CASCADE"))
         connection.execute(text("CREATE SCHEMA public"))
     config = Config(str(API_DIR / "alembic.ini"))
     config.set_main_option("script_location", str(API_DIR / "migrations"))
-    config.set_main_option("sqlalchemy.url", TEST_DATABASE_URL)
+    config.set_main_option("sqlalchemy.url", database_url)
     command.upgrade(config, "head")
     yield engine
     engine.dispose()
