@@ -4,6 +4,7 @@ HeiGIT replays recorded real responses; no test calls an LLM or a live provider.
 """
 
 import json
+import time
 import uuid
 from typing import Any
 
@@ -121,15 +122,16 @@ def test_two_rejections_fall_back_to_a_factual_answer() -> None:
     assert result.fallback_reason == "rejected_twice"
     assert result.verdicts == [REJECTED, REJECTED]
     assert result.message == (
-        "Here is a 5.26 km running loop for the 4.50-5.50 km you asked for. "
+        "Here is a 5.26 km running loop for the 5 km you asked for. "
         "Distance is measured along the route shown, which is exactly what the GPX contains. "
         "The time is HeiGIT's foot-walking estimate, not a running time. "
+        "OpenStreetMap has no surface for 27% of this route, so its surface is unknown there. "
         "Access restrictions, closures and safety are not checked yet. OpenStreetMap data can"
         " be out of date, so check the route before you go."
     )
     assert "shaded" not in result.message
     assert "5.26 km running loop" in result.message
-    assert "4.50-5.50 km" in result.message
+    assert "4.50" not in result.message
 
 
 def test_an_unavailable_judge_fails_closed() -> None:
@@ -257,7 +259,7 @@ def test_a_loop_that_cannot_be_made_ends_without_a_draft() -> None:
 
     assert result.kind == "no_route"
     assert result.fallback_reason == "no_route"
-    assert result.message == "No acceptable 0.90-1.10 km running loop was found in 5 tries."
+    assert result.message == "No acceptable 1 km running loop was found in 5 tries."
     assert len(agent.prompts) == 1
 
 
@@ -267,6 +269,28 @@ def test_an_exhausted_time_budget_makes_no_model_call() -> None:
 
     assert result.fallback_reason == "interpretation_unavailable"
     assert agent.prompts == []
+
+
+class SlowModel(FakeModel):
+    def next_reply(self, prompt: Any) -> Any:
+        time.sleep(0.2)
+        return super().next_reply(prompt)
+
+
+def test_a_reply_after_the_time_budget_is_not_used() -> None:
+    requests: list[httpx.Request] = []
+
+    def counted(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return recorded_response(request)
+
+    agent = SlowModel(replies=[RUN_5K])
+    heigit = httpx.MockTransport(counted)
+    result = run(agent, FakeModel(), heigit_handler=heigit, time_budget_s=0.1)
+
+    assert result.fallback_reason == "interpretation_unavailable"
+    assert len(agent.prompts) == 1
+    assert requests == []
 
 
 def test_models_never_see_the_start_coordinates_or_the_key() -> None:
@@ -354,3 +378,6 @@ def test_a_ride_is_checked_for_restricted_roads() -> None:
     chosen = result.generation.selection.chosen  # type: ignore[union-attr]
     assert result.generation.attempts[chosen].restricted_roads is not None  # type: ignore[index]
     assert "cycling-road estimate" in result.message
+    assert "It rides 46 m on trunk roads (West Coast Highway)." in result.message
+    assert result.facts is not None
+    assert any("no surface for" in line for line in result.facts.limitations)

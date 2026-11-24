@@ -257,6 +257,54 @@ def find_selected(
     return row[0], row[1]
 
 
+def unknown_surface_share(surfaces_m: dict[str, float]) -> float:
+    """The share of the route OpenStreetMap has no surface for; all of it when none is known."""
+    surfaced_m = sum(surfaces_m.values())
+    if surfaced_m <= 0:
+        return 1.0
+    return surfaces_m.get("unknown", 0.0) / surfaced_m
+
+
+def route_limitations(
+    activity: str, unknown_share: float, roads: list[RestrictedRoad] | None
+) -> list[str]:
+    """What the page and the agent must say about a route besides its measurements."""
+    limitations = list(LIMITATIONS[activity])
+    trunk_m = 0.0
+    trunk_names = []
+    tunnel_names = []
+    for road in roads or []:
+        if road.outcome != "on_disclosed_road":
+            continue
+        if road.kind == "minor road tunnel":
+            tunnel_names.append(road.name)
+        else:
+            trunk_m += road.on_m
+            trunk_names.append(road.name)
+    if tunnel_names:
+        limitations.insert(
+            3,
+            f"It goes through tunnels on minor roads ({', '.join(tunnel_names)})."
+            " OpenStreetMap records no cycling ban there; follow any signs at the entrance.",
+        )
+    if trunk_names:
+        trunk_length = f"{trunk_m / 1000:.1f} km"
+        if trunk_m < 1000:
+            trunk_length = f"{round(trunk_m)} m"
+        limitations.insert(
+            3,
+            f"It rides {trunk_length} on trunk roads ({', '.join(trunk_names)})."
+            " Bicycles are allowed there, but traffic is heavy.",
+        )
+    if unknown_share > 0:
+        limitations.insert(
+            2,
+            f"OpenStreetMap has no surface for {unknown_share:.0%} of this route, so its"
+            " surface is unknown there.",
+        )
+    return limitations
+
+
 def to_selected_route(
     session: Session,
     run: GenerationRunRecord,
@@ -266,55 +314,17 @@ def to_selected_route(
     revision = find_revision(session, run)
     activity = run_activity(session, run)
     distance_m = candidate.measured_distance_m or 0.0
-    surfaces = []
-    unknown_m = 0.0
-    for surface, metres in (candidate.surfaces_m or {}).items():
-        surfaces.append(SurfaceDistance(surface=surface, distance_m=metres))
-        if surface == "unknown":
-            unknown_m += metres
-    surfaced_m = sum(surface.distance_m for surface in surfaces)
-    unknown_share = 1.0
-    if surfaced_m > 0:
-        unknown_share = unknown_m / surfaced_m
-    limitations = list(LIMITATIONS[activity])
+    surfaces_m = candidate.surfaces_m or {}
+    surfaces = [SurfaceDistance(surface=name, distance_m=m) for name, m in surfaces_m.items()]
+    unknown_share = unknown_surface_share(surfaces_m)
+    roads = None
     access = AccessCheck(status="not_checked", source=None, roads=[])
     if candidate.restricted_roads is not None:
         roads = [RestrictedRoad.model_validate(road) for road in candidate.restricted_roads]
         access = AccessCheck(
             status="no_prohibited_road_found", source=run.restriction_data, roads=roads
         )
-        trunk_m = 0.0
-        trunk_names = []
-        tunnel_names = []
-        for road in roads:
-            if road.outcome != "on_disclosed_road":
-                continue
-            if road.kind == "minor road tunnel":
-                tunnel_names.append(road.name)
-            else:
-                trunk_m += road.on_m
-                trunk_names.append(road.name)
-        if tunnel_names:
-            limitations.insert(
-                3,
-                f"It goes through tunnels on minor roads ({', '.join(tunnel_names)})."
-                " OpenStreetMap records no cycling ban there; follow any signs at the entrance.",
-            )
-        if trunk_names:
-            trunk_length = f"{trunk_m / 1000:.1f} km"
-            if trunk_m < 1000:
-                trunk_length = f"{round(trunk_m)} m"
-            limitations.insert(
-                3,
-                f"It rides {trunk_length} on trunk roads ({', '.join(trunk_names)})."
-                " Bicycles are allowed there, but traffic is heavy.",
-            )
-    if unknown_share > 0:
-        limitations.insert(
-            2,
-            f"OpenStreetMap has no surface for {unknown_share:.0%} of this route, so its"
-            " surface is unknown there.",
-        )
+    limitations = route_limitations(activity, unknown_share, roads)
     engine = candidate.engine or {}
     return SelectedRoute(
         run_id=run.id,
