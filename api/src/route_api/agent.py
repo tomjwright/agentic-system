@@ -29,12 +29,13 @@ from route_api.agent_models import (
     RunRequest,
     Verdict,
 )
+from route_api.contracts import DistanceTarget
 from route_api.generation import Generation, generate
 from route_api.geography import line_length_m
 from route_api.heigit import Heigit
 from route_api.restrictions import RestrictedWays
 from route_api.route_selection import distance_bounds
-from route_api.runs import LIMITATIONS
+from route_api.runs import route_limitations, unknown_surface_share
 
 TIME_BUDGET_S = 90
 ACTIVITY_NAMES = {"running": "running", "road_cycling": "road cycling"}
@@ -108,11 +109,14 @@ class RouteAgent:
             raise TimeoutError
         messages = [SystemMessage(system), HumanMessage(prompt)]
         if schema is None:
-            reply = model.invoke(messages).text
+            reply: Any = model.invoke(messages).text
             if not reply.strip():
                 raise ValueError
-            return reply
-        return schema.model_validate(model.with_structured_output(schema).invoke(messages))
+        else:
+            reply = schema.model_validate(model.with_structured_output(schema).invoke(messages))
+        if time.monotonic() >= self.deadline:
+            raise TimeoutError  # a late reply is not used, so nothing starts after the deadline
+        return reply
 
     def interpret(self, state: RunState) -> RunState:
         request = self.request
@@ -146,6 +150,7 @@ class RouteAgent:
             start_name=start.name,
             min_km=bounds.min_m / 1000,
             max_km=bounds.max_m / 1000,
+            requested=distance,
             tries=0,
             error_code="generation_failed",
             unsupported_preferences=interpretation.preferences,
@@ -261,12 +266,15 @@ def measure(facts: RouteFacts, generation: Generation) -> None:
     facts.outcome = "no_route"
     if generation.selection is None or generation.selection.chosen is None:
         return
-    route = generation.attempts[generation.selection.chosen].route
+    attempt = generation.attempts[generation.selection.chosen]
+    route = attempt.route
     assert route is not None
     facts.outcome = "route"
     facts.distance_km = round(line_length_m(route.coordinates) / 1000, 2)
     facts.duration_minutes = round(route.duration_s / 60)
-    facts.limitations = list(LIMITATIONS[facts.activity])
+    facts.limitations = route_limitations(
+        facts.activity, unknown_surface_share(route.surfaces_m), attempt.restricted_roads
+    )
 
 
 def grounds(state: RunState) -> str:
@@ -293,7 +301,11 @@ def fallback_message(clarification: Clarification | None, facts: RouteFacts | No
     if facts.outcome == "provider_error":
         return f"No route could be made: {facts.error_code}."
     name = ACTIVITY_NAMES[facts.activity]
-    asked = f"{facts.min_km:.2f}-{facts.max_km:.2f} km"
+    requested = facts.requested
+    if isinstance(requested, DistanceTarget):
+        asked = f"{requested.target_km:g} km"
+    else:
+        asked = f"{requested.min_km:g}-{requested.max_km:g} km"
     if facts.outcome == "no_route":
         sentences = [f"No acceptable {asked} {name} loop was found in {facts.tries} tries."]
     else:

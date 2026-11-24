@@ -52,8 +52,9 @@ class RouteFacts(BaseModel):
     outcome: Literal["route", "no_route", "provider_error"]
     activity: Activity
     start_name: str | None
-    min_km: float
-    max_km: float
+    requested: Distance = Field(description="The distance the user asked for")
+    min_km: float = Field(description="Shortest accepted loop, with any tolerance applied")
+    max_km: float = Field(description="Longest accepted loop, with any tolerance applied")
     distance_km: float | None = None
     duration_minutes: int | None = Field(default=None, description="HeiGIT's time")
     tries: int
