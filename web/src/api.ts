@@ -51,7 +51,14 @@ export async function getSignedIn(): Promise<SignedIn | null> {
 }
 
 export async function signOut(): Promise<void> {
-  await fetch("/api/auth/logout", { method: "POST", headers: { "X-CSRF-Token": csrfToken } });
+  const response = await fetch("/api/auth/logout", {
+    method: "POST",
+    headers: { "X-CSRF-Token": csrfToken },
+  });
+  if (!response.ok) {
+    const error = ((await response.json()) as ErrorResponse).error;
+    throw new ApiError(error.code, error.message);
+  }
   csrfToken = "";
 }
 

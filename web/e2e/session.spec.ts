@@ -15,3 +15,18 @@ test("sign in, then sign out ends the session", async ({ page }) => {
   const me = await page.request.get("/api/auth/me");
   expect(me.status()).toBe(401);
 });
+
+test("a refused sign-out keeps the session and says so", async ({ page }) => {
+  await signIn(page);
+  await page.route("/api/auth/logout", (route) =>
+    route.fulfill({
+      status: 429,
+      json: { error: { code: "rate_limited", message: "Too many requests; wait a minute" } },
+    }),
+  );
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(
+    page.getByText("Sign-out failed: Too many requests; wait a minute"),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+});

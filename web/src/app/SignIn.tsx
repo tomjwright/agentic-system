@@ -12,6 +12,7 @@ type State = { kind: "checking" } | { kind: "signed_out" } | { kind: "signed_in"
 // Only Tom's GitHub account gets a session. Checking it also wakes a sleeping API early.
 export default function SignIn() {
   const [state, setState] = useState<State>({ kind: "checking" });
+  const [signOutError, setSignOutError] = useState("");
 
   useEffect(() => {
     getSignedIn()
@@ -38,10 +39,15 @@ export default function SignIn() {
       <button
         type="button"
         className="sign-out"
-        onClick={() => signOut().then(() => setState({ kind: "signed_out" }))}
+        onClick={() =>
+          signOut()
+            .then(() => setState({ kind: "signed_out" }))
+            .catch((error: Error) => setSignOutError(`Sign-out failed: ${error.message}`))
+        }
       >
         Sign out
       </button>
+      {signOutError && <p role="alert">{signOutError}</p>}
     </>
   );
 }
