@@ -97,7 +97,7 @@ test("answer the assistant's question, then get its judged loop as the stored GP
   expect(points).toEqual(route.geometry.coordinates);
 });
 
-test("without model keys the assistant says it is not set up and the form still works", async ({
+test("an assistant the API has not configured says so and the form still works", async ({
   page,
 }) => {
   await page.route("**/agent-runs", (route) =>
