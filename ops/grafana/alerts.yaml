@@ -4,6 +4,7 @@
 #   outage: the Synthetic Monitoring HTTP check on /api/health has failed for 10 minutes
 #   errors: more than 2 generate_route spans in the last hour ended with an error code
 #   quota:  HeiGIT answered 429 in the last hour
+# Each rule emails Tom through the stack's "Synthetic Monitoring email" contact point.
 # Tempo alerts need TraceQL metrics (count_over_time, an instant query), reduced to one
 # number, then a threshold: a TraceQL search with `| count() > n` does not evaluate, and
 # a threshold straight on the TraceQL result fails as "only reduced data can be alerted on".
@@ -35,6 +36,7 @@ groups:
         # No probe results means the check itself is gone, which hides an outage.
         noDataState: Alerting
         labels: { severity: page }
+        notification_settings: { receiver: Synthetic Monitoring email }
       - uid: route-api-generation-errors
         title: Loop generation is failing
         condition: errors
@@ -63,6 +65,7 @@ groups:
                 - evaluator: { type: gt, params: [2] }
         noDataState: OK
         labels: { severity: warn }
+        notification_settings: { receiver: Synthetic Monitoring email }
       - uid: route-api-heigit-quota
         title: HeiGIT quota used up
         condition: quota
@@ -91,3 +94,4 @@ groups:
                 - evaluator: { type: gt, params: [0] }
         noDataState: OK
         labels: { severity: warn }
+        notification_settings: { receiver: Synthetic Monitoring email }

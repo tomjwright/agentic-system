@@ -193,8 +193,8 @@ default 3 s every probe timed out on the free instance while it answered other c
 under a second. Each rule's queries evaluate on the real stack (`POST /api/v1/eval`), and
 the imported rules report healthy in Grafana; `ops/grafana/import_alerts.py` imports them.
 The outage rule alerts on no data too, so it fires if the Synthetic Monitoring check is gone.
-Alerts reach someone only once the stack has a contact point and the notification policy
-sends to it.
+Each rule names the "Synthetic Monitoring email" contact point (Tom's address), so alerts
+reach him without changing the notification policy.
 
 ## GitHub settings (Tom, as repository admin)
 
