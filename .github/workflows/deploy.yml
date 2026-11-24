@@ -1,0 +1,93 @@
+name: deploy
+
+# Promotes a main commit only after every check main requires has passed (route_api.promote,
+# tested in api/tests/test_promote.py; its trust conditions in api/tests/test_deploy_workflow.py).
+# Secrets live in the "production" environment, which only the main branch may use
+# (docs/hosting.md#github-settings).
+on:
+  # ci runs the longest jobs; promote waits for codeql and workflow-security as well.
+  workflow_run: # zizmor: ignore[dangerous-triggers] only a push to this repository's main runs (if: below)
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: read
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    # The repository is public: a fork's pull request runs "ci" too, and the branches filter
+    # above only matches its head branch name. So deploy only a passing push to this
+    # repository's main, or a manual run on main.
+    if: >-
+      (github.event_name == 'workflow_run'
+      && github.event.workflow_run.event == 'push'
+      && github.event.workflow_run.head_repository.full_name == github.repository
+      && github.event.workflow_run.head_branch == 'main'
+      && github.event.workflow_run.conclusion == 'success')
+      || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    # Longer than promote.py's own waits (60 min for checks, 20 for Render, the browser tests),
+    # so it is never cut off between promoting and rolling back.
+    timeout-minutes: 150
+    environment: production
+    env:
+      COMMIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      VERCEL_CLI: ${{ github.workspace }}/ops/vercel-cli/node_modules/.bin/vercel
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.COMMIT_SHA }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+        with:
+          enable-cache: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - name: Install the Vercel CLI that ops/vercel-cli/package-lock.json pins
+        run: npm ci --prefix ops/vercel-cli
+      - name: Pull the production project settings
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          "$VERCEL_CLI" pull --yes --environment=production --token="$VERCEL_TOKEN"
+      - name: Build the page (no token in the build's environment)
+        run: |
+          "$VERCEL_CLI" build --prod
+      - name: No provider key in the built page
+        run: scripts/no_provider_secrets.sh .vercel/output
+      - name: Stage the page (not yet live)
+        id: stage
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          url="$("$VERCEL_CLI" deploy --prebuilt --prod --skip-domain --token="$VERCEL_TOKEN")"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: Install the staged browser tests
+        working-directory: web
+        run: npm ci && npx playwright install --with-deps chromium
+      - name: Promote, or roll back to the previous healthy release
+        working-directory: api
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REQUIRED_CHECKS: >-
+            secrets-scan,feasibility,actionlint,zizmor,codeql (python),codeql (actions),api,web,codeql (javascript-typescript),migration-compat,mutation-api,mutation-feasibility,render-smoke,vercel-build
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          SMOKE_TOKEN: ${{ secrets.SMOKE_TOKEN }}
+          STAGED_URL: ${{ steps.stage.outputs.url }}
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+        run: |
+          uv sync --frozen --no-dev
+          uv run --no-sync python -m route_api.promote
