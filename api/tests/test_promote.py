@@ -41,6 +41,7 @@ class FakeHosts:
         # Polls of the production domain that still show the outgoing page after a switch.
         self.switch_polls = 0
         self.switching_to: str | None = None
+        self.rollback_never_takes_effect = False
         self.production_page: str | None = "dpl-old"
         self.broken_sites: set[str] = set()
         self.changes: list[str] = []
@@ -119,7 +120,8 @@ class FakeHosts:
             self.changes.append(f"vercel {action} {deployment}")
             if f"vercel {action}" in self.refused:
                 return httpx.Response(403, json={"error": {"code": "forbidden"}})
-            self.switching_to = deployment
+            if action == "promote" or not self.rollback_never_takes_effect:
+                self.switching_to = deployment
             # Vercel answers both with an empty body, then moves the domain shortly after.
             return httpx.Response(201)
         raise AssertionError(f"unexpected Vercel call {path}")
@@ -457,6 +459,7 @@ def test_a_domain_that_never_switches_rolls_both_back(
     hosts: FakeHosts, no_waiting: list[float]
 ) -> None:
     hosts.switch_polls = 100
+    hosts.rollback_statuses = ["live"]
     with pytest.raises(
         PromotionStopped,
         match=r"did not switch to the staged page in time\); page rolled back, API rolled back$",
@@ -468,6 +471,7 @@ def test_a_domain_that_never_switches_rolls_both_back(
         "vercel rollback dpl-old",
         "render rollback dep-old",
     ]
+    assert no_waiting == [1] * (3 + 5 + 1)  # Render, the 5 s domain deadline, the rollback
 
 
 def test_a_refused_promotion_rolls_the_api_back(hosts: FakeHosts) -> None:
@@ -524,3 +528,18 @@ def test_a_refused_api_rollback_is_reported(hosts: FakeHosts) -> None:
         match=r"API ROLLBACK FAILED \(HTTPStatusError\); the new API may still be serving$",
     ):
         promote(hosts)
+
+
+def test_a_page_rollback_that_never_takes_effect_is_reported(
+    hosts: FakeHosts, no_waiting: list[float]
+) -> None:
+    hosts.broken_sites.add(PRODUCTION)
+    hosts.rollback_never_takes_effect = True
+    hosts.rollback_statuses = ["live"]
+    with pytest.raises(
+        PromotionStopped,
+        match=r"; PAGE ROLLBACK FAILED \(production still serves the new page\), "
+        r"API rolled back$",
+    ):
+        promote(hosts)
+    assert no_waiting == [1] * (3 + 5 + 1)

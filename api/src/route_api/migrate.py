@@ -18,15 +18,8 @@ from sqlalchemy import Engine, create_engine
 API_DIR = Path(__file__).resolve().parents[2]
 
 
-def alembic_config(url: str) -> Config:
-    config = Config(str(API_DIR / "alembic.ini"))
-    config.set_main_option("script_location", str(API_DIR / "migrations"))
-    config.set_main_option("sqlalchemy.url", url)
-    return config
-
-
 def known_revisions() -> set[str]:
-    script = ScriptDirectory.from_config(alembic_config(""))
+    script = ScriptDirectory(str(API_DIR / "migrations"))
     return {revision.revision for revision in script.walk_revisions()}
 
 
@@ -44,7 +37,9 @@ def migrate(url: str) -> str:
         engine.dispose()
     if applied is not None and applied not in known_revisions():
         return f"database at {applied}, newer than this release; left as it is"
-    command.upgrade(alembic_config(url), "head")
+    config = Config(str(API_DIR / "alembic.ini"))
+    config.set_main_option("sqlalchemy.url", url)
+    command.upgrade(config, "head")
     return "database at this release's head"
 
 
