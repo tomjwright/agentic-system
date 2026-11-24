@@ -228,6 +228,32 @@ jobs:
           python-version: ${{ steps.python.outputs.version }}
       - run: scripts/render_smoke.sh
 
+  vercel-build:
+    # Builds the page as Vercel does (vercel build, web/vercel.json, root directory web) with
+    # synthetic provider settings in the environment, then scans the output with the deploy
+    # workflow's own list (scripts/no_provider_secrets.sh). Needs no Vercel token.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      API_URL: https://api.example.invalid
+      ONEMAP_API_TOKEN: synthetic-onemap-token-must-not-ship
+      HEIGIT_API_KEY: synthetic-heigit-key-must-not-ship
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - name: Install the Vercel CLI that ops/vercel-cli/package-lock.json pins
+        run: npm ci --prefix ops/vercel-cli
+      - name: The project settings vercel pull would write (framework Next.js, root directory web)
+        run: |
+          mkdir -p .vercel
+          echo '{"projectId": "ci", "orgId": "ci", "settings": {"framework": "nextjs", "rootDirectory": "web"}}' > .vercel/project.json
+      - run: ops/vercel-cli/node_modules/.bin/vercel build --prod --yes
+      - run: scripts/no_provider_secrets.sh .vercel/output
+
   secrets-scan:
     # Scans the whole git history on every run, so no commit range (merge pushes, long PRs) is skipped.
     runs-on: ubuntu-latest
