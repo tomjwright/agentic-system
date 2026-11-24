@@ -25,6 +25,7 @@ ErrorCode = Literal[
     "operation_conflict",
     "no_route_selected",
     "generation_interrupted",
+    "agent_not_configured",
 ]
 
 
@@ -240,3 +241,37 @@ class SelectedRoute(BaseModel):
 class SignedIn(BaseModel):
     owner_id: str
     csrf_token: str = Field(description="Send as X-CSRF-Token with every POST.")
+
+
+class AgentRunCreate(BaseModel):
+    brief: str = Field(min_length=1, max_length=1000, description="What the user typed; not stored")
+    distance: Distance | None = Field(default=None, description="The form's distance, if any")
+
+
+class AgentRun(BaseModel):
+    """How one route agent answer was made and judged. The brief and the answer are not kept."""
+
+    id: UUID
+    route_request_id: UUID
+    status: Literal["running", "finished"]
+    kind: Literal["clarification", "route", "no_route", "failed"] | None
+    message_source: Literal["approved_draft", "fallback"] | None = Field(
+        description="An approved draft, or the factual answer code writes when none is approved"
+    )
+    fallback_reason: str | None
+    approvals: list[bool] = Field(
+        description="The judge's decision on each draft; its reasons stay on the server"
+    )
+    repairs: int
+    agent_model: str
+    judge_model: str
+    generation_run_id: UUID | None = Field(
+        description="The stored run whose selected route the page draws and the GPX holds"
+    )
+    started_at: datetime
+    finished_at: datetime | None
+
+
+class AgentAnswer(BaseModel):
+    run: AgentRun
+    message: str = Field(description="An approved draft or the factual fallback; not stored")

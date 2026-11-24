@@ -32,7 +32,7 @@ from fastapi import Request
 from sqlalchemy import Engine, delete, func, select
 from sqlalchemy.orm import Session
 
-from route_api.db import GenerationRunRecord, OwnerSessionRecord
+from route_api.db import AgentRunRecord, GenerationRunRecord, OwnerSessionRecord
 
 AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
 TOKEN_URL = "https://github.com/login/oauth/access_token"  # noqa: S105 (a URL)
@@ -273,13 +273,21 @@ class Auth:
             )
 
     def runs_started_since(self, session: Session, owner_id: str, since: datetime) -> int:
+        """Generation runs, plus agent runs that made none (a clarification, or not yet)."""
         started = session.scalar(
             select(func.count())
             .select_from(GenerationRunRecord)
             .where(GenerationRunRecord.owner_id == owner_id)
             .where(GenerationRunRecord.started_at > since)
         )
-        return started or 0
+        unrouted_agent_runs = session.scalar(
+            select(func.count())
+            .select_from(AgentRunRecord)
+            .where(AgentRunRecord.owner_id == owner_id)
+            .where(AgentRunRecord.generation_run_id.is_(None))
+            .where(AgentRunRecord.started_at > since)
+        )
+        return (started or 0) + (unrouted_agent_runs or 0)
 
 
 def auth_from_env(engine: Engine) -> Auth:

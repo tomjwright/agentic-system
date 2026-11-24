@@ -71,6 +71,12 @@ ONEMAP_API_TOKEN=... HEIGIT_API_KEY=... uv run uvicorn route_api.main:app_from_e
 cd ../web && npm ci && npm run dev    # http://localhost:3000, forwards /api to port 8000
 ```
 
+The route agent (`POST /api/route-requests/{id}/agent-runs`, `route_api/agent.py`) also needs
+`ANTHROPIC_API_KEY` (its model, `anthropic:claude-haiku-4-5`) and `GOOGLE_API_KEY` (its judge,
+`google_genai:gemini-3.5-flash`). Without both it answers 503 `agent_not_configured`; the rest
+of the API is unaffected. It stores how each answer was made and judged, never the brief or
+the answer, and a route it makes is an ordinary stored run.
+
 Owners: there is no sign-in yet. The owner is the `X-Owner-Id` header, or
 `LOCAL_OWNER_ID` (default `local-owner`). Anyone who can reach the API can claim any
 owner, so keep it on localhost until managed sign-in (issue #5) lands.

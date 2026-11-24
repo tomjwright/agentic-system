@@ -12,6 +12,7 @@ from sqlalchemy import Engine, create_engine, make_url, text
 
 from route_api.auth import SESSION_COOKIE, Auth, GitHubOAuth, create_session
 from route_api.heigit import Heigit
+from route_api.llm import Models
 from route_api.main import create_app
 from route_api.onemap import OneMap
 from route_api.restrictions import load_restricted_ways
@@ -95,6 +96,7 @@ def api_with(
     requests_per_minute: int = 1000,
     runs_per_day: int = 1000,
     allowed_ids: frozenset[int] = frozenset({TOM_GITHUB_ID, 2, 3}),
+    models: Models | None = None,
 ) -> TestClient:
     """An API whose providers answer from recordings, signed in as LOCAL_OWNER."""
     onemap = OneMap(httpx.Client(transport=handler), token=token, retry_wait_seconds=0)
@@ -116,7 +118,9 @@ def api_with(
         requests_per_minute=requests_per_minute,
         runs_per_day=runs_per_day,
     )
-    app = create_app(onemap, engine, auth, heigit=heigit, restricted_ways=RESTRICTED_WAYS)
+    app = create_app(
+        onemap, engine, auth, heigit=heigit, restricted_ways=RESTRICTED_WAYS, models=models
+    )
     client = TestClient(app, base_url="https://testserver")
     client.headers.update(as_owner(client, LOCAL_OWNER))
     return client
