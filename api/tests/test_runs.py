@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 from typing import Any
 
 import httpx
+import httpx2
 import pytest
 from fastapi.testclient import TestClient
 from opentelemetry.sdk.trace import TracerProvider
@@ -47,9 +48,9 @@ def start_run(
     distance: dict[str, Any],
     owner: str = TOM,
     operation_id: str | None = None,
-) -> httpx.Response:
+) -> httpx2.Response:
     body = {"operation_id": operation_id or str(uuid.uuid4()), "distance": distance}
-    response: httpx.Response = api.post(
+    response: httpx2.Response = api.post(
         f"/api/route-requests/{request_id}/runs", json=body, headers=as_owner(api, owner)
     )
     return response

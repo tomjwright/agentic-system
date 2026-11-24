@@ -3,6 +3,7 @@
 from collections.abc import Iterator
 
 import httpx
+import httpx2
 import pytest
 from alembic import command
 from alembic.config import Config
@@ -28,9 +29,9 @@ def set_revision(engine: Engine, revision: str) -> None:
         connection.execute(text("UPDATE alembic_version SET version_num = :v"), {"v": revision})
 
 
-def ready(engine: Engine) -> httpx.Response:
+def ready(engine: Engine) -> httpx2.Response:
     api = anonymous(api_with(engine, httpx.MockTransport(recorded_response), "token"))
-    response: httpx.Response = api.get("/api/ready")
+    response: httpx2.Response = api.get("/api/ready")
     return response
 
 

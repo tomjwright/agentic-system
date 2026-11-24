@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 
 import httpx
+import httpx2
 import pytest
 from sqlalchemy import Engine, update
 from sqlalchemy.orm import Session
@@ -244,9 +245,9 @@ def test_a_run_started_over_a_day_ago_no_longer_counts_against_the_daily_limit(
     }
     request_id = api.post("/api/route-requests", json=start).json()["id"]
 
-    def start_run() -> httpx.Response:
+    def start_run() -> httpx2.Response:
         body = {"operation_id": str(uuid.uuid4()), "distance": {"kind": "target", "target_km": 5}}
-        response: httpx.Response = api.post(f"/api/route-requests/{request_id}/runs", json=body)
+        response: httpx2.Response = api.post(f"/api/route-requests/{request_id}/runs", json=body)
         return response
 
     assert start_run().status_code == 201
