@@ -14,9 +14,15 @@ import {
   startRun,
 } from "@/api";
 
-const MIN_KM = 1;
-const MAX_KM = 50;
 const POLL_MS = 2000;
+// The API's per-activity limits (route_selection.DISTANCE_LIMITS_KM).
+const LIMITS_KM = { running: [1, 50], road_cycling: [5, 100] };
+const NAMES = { running: "Running loop", road_cycling: "Road-cycling loop" };
+const ROAD_OUTCOMES = {
+  on_prohibited_road: "on it",
+  crossing_or_beside: "crosses or passes beside it",
+  on_disclosed_road: "rides on it",
+};
 
 type Props = {
   routeRequest: RouteRequest;
@@ -31,7 +37,14 @@ function minutes(seconds: number): string {
   return `${Math.round(seconds / 60)} min`;
 }
 
-function readDistance(mode: string, target: string, low: string, high: string): Distance | string {
+function readDistance(
+  activity: RouteRequest["activity"],
+  mode: string,
+  target: string,
+  low: string,
+  high: string,
+): Distance | string {
+  const [MIN_KM, MAX_KM] = LIMITS_KM[activity];
   if (mode === "target") {
     const targetKm = Number(target);
     if (!Number.isFinite(targetKm) || targetKm < MIN_KM || targetKm > MAX_KM) {
@@ -52,7 +65,9 @@ function readDistance(mode: string, target: string, low: string, high: string): 
 
 export default function RunPanel({ routeRequest, onRoute }: Props) {
   const [mode, setMode] = useState("target");
-  const [target, setTarget] = useState("5");
+  const activity = routeRequest.activity;
+  const [MIN_KM, MAX_KM] = LIMITS_KM[activity];
+  const [target, setTarget] = useState(activity === "running" ? "5" : "20");
   const [low, setLow] = useState("");
   const [high, setHigh] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -60,10 +75,13 @@ export default function RunPanel({ routeRequest, onRoute }: Props) {
   const [run, setRun] = useState<GenerationRun | null>(null);
   const [route, setRoute] = useState<SelectedRoute | null>(null);
   // Kept after a lost response, so "Generate" again resolves to the run already recorded.
-  const [pending, setPending] = useState<{ key: string; operationId: string } | null>(null);
+  const [pending, setPending] = useState<{
+    key: string;
+    operationId: string;
+  } | null>(null);
 
   async function generate() {
-    const distance = readDistance(mode, target, low, high);
+    const distance = readDistance(activity, mode, target, low, high);
     if (typeof distance === "string") {
       setError(distance);
       return;
@@ -104,13 +122,9 @@ export default function RunPanel({ routeRequest, onRoute }: Props) {
     }
   }
 
-  if (routeRequest.activity !== "running") {
-    return <p className="status">Road-cycling loops come in a later version.</p>;
-  }
-
   return (
     <div className="run">
-      <h2>Running loop</h2>
+      <h2>{NAMES[activity]}</h2>
       <fieldset>
         <legend>Distance</legend>
         <label>
@@ -207,12 +221,30 @@ export default function RunPanel({ routeRequest, onRoute }: Props) {
             {Math.abs(Math.round(route.deviation_m))} m from {km(route.target_m)}; accepted{" "}
             {km(route.bounds.min_m)} to {km(route.bounds.max_m)})
           </p>
-          <p>Walking time {minutes(route.duration_s)} (not a running time)</p>
+          {route.activity === "running" ? (
+            <p>Walking time {minutes(route.duration_s)} (not a running time)</p>
+          ) : (
+            <p>Cycling time {minutes(route.duration_s)} (HeiGIT cycling-road estimate)</p>
+          )}
           <ul className="limitations" aria-label="Limitations">
             {route.limitations.map((limitation) => (
               <li key={limitation}>{limitation}</li>
             ))}
           </ul>
+          {route.access.status !== "not_checked" && (
+            <details>
+              <summary>Restricted roads checked: {route.access.roads.length} nearby</summary>
+              <ul aria-label="Restricted roads">
+                {route.access.roads.map((road) => (
+                  <li key={road.osm_way_ids.join(" ")}>
+                    {road.name} ({road.kind}): {ROAD_OUTCOMES[road.outcome]}
+                    {road.on_m > 0 ? `, ${Math.round(road.on_m)} m` : ""}
+                  </li>
+                ))}
+              </ul>
+              <p>{route.access.source}</p>
+            </details>
+          )}
           <details>
             <summary>
               {run.candidates.length} {run.candidates.length === 1 ? "try" : "tries"}
