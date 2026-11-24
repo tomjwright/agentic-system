@@ -5,6 +5,7 @@ Run: uv run python -m tests.serve_recorded (needs DATABASE_URL, migrated)
 """
 
 import os
+from urllib.parse import urlencode
 
 import httpx
 import uvicorn
@@ -46,7 +47,8 @@ def main() -> None:
 
     @app.get("/api/fake-github/authorize")
     def fake_authorize(state: str) -> RedirectResponse:
-        return RedirectResponse(f"/api/auth/callback?code=good-code&state={state}")
+        query = urlencode({"code": "good-code", "state": state})
+        return RedirectResponse("/api/auth/callback?" + query)
 
     uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("PORT", "8001")), access_log=False)
 
