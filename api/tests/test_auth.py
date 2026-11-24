@@ -14,6 +14,7 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
+from route_api.auth import auth_from_env, create_session
 from tests.conftest import TOM_GITHUB_ID, api_with, as_owner
 from tests.recorded_onemap import recorded_response
 
@@ -138,6 +139,19 @@ def test_a_signed_out_session_stops_working(clean_engine: Engine) -> None:
     assert api.post("/api/auth/logout", headers={"X-CSRF-Token": csrf}).status_code == 204
     replayed = api.get("/api/auth/me", headers={"Cookie": f"__Host-route-session={session}"})
     assert replayed.status_code == 401
+
+
+def test_starting_the_api_ends_sessions_of_owners_no_longer_allowed(
+    clean_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    removed, _ = create_session(clean_engine, f"github:{OTHER_ALLOWED_ID}")
+    kept, _ = create_session(clean_engine, f"github:{TOM_GITHUB_ID}")
+    monkeypatch.setenv("OWNER_GITHUB_IDS", str(TOM_GITHUB_ID))
+    auth_from_env(clean_engine)
+    api = anonymous(client_for(clean_engine))
+    for token, status in [(removed, 401), (kept, 200)]:
+        me = api.get("/api/auth/me", headers={"Cookie": f"__Host-route-session={token}"})
+        assert me.status_code == status
 
 
 def test_a_cookie_without_the_csrf_token_cannot_change_anything(clean_engine: Engine) -> None:
