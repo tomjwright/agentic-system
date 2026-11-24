@@ -188,7 +188,8 @@ With `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` set the API 
 spans (`generate_route` with `route.error_code`, `heigit.directions` with the HTTP status).
 `ops/grafana/alerts.yaml` holds three rules: outage (a Grafana Synthetic Monitoring HTTP
 check named `route-api-health` on `/api/health` failing for 10 minutes), generation errors
-and HeiGIT quota. Each rule's queries evaluate on the real stack (`POST /api/v1/eval`). The
+and HeiGIT quota. Each rule's queries evaluate on the real stack (`POST /api/v1/eval`);
+`ops/grafana/import_alerts.py` imports them. The
 outage rule alerts on no data too, so it fires until the Synthetic Monitoring check exists.
 Alerts reach someone only once the stack has a contact point and the notification policy
 sends to it.

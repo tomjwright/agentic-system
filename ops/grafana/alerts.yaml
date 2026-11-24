@@ -1,6 +1,6 @@
 # Grafana-managed alert rules for the route API (docs/hosting.md#telemetry-and-alerts).
-# Import with the provisioning API (POST /api/v1/provisioning/alert-rules per rule, folder
-# route-creator). Datasource uids are the stack defaults.
+# Import with ops/grafana/import_alerts.py, which adds the folder, group and error state the
+# provisioning API needs. Datasource uids are the stack defaults.
 #   outage: the Synthetic Monitoring HTTP check on /api/health has failed for 10 minutes
 #   errors: more than 2 generate_route spans in the last hour ended with an error code
 #   quota:  HeiGIT answered 429 in the last hour
