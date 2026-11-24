@@ -15,10 +15,11 @@ live in `tomjwright/home` `AGENTS.md`; this file adds the rules for this repo.
 ## Rules
 
 - `HEIGIT_API_KEY` stays server side: `route_feasibility/heigit.py`, `app_from_env` in
-  `api/src/route_api/main.py` and the manual `api/scripts/record_heigit.py` read it, and
-  it is sent only as the `Authorization` header to the fixed `api.heigit.org` directions
-  URL (`api/src/route_api/heigit.py`). Never print, log, commit or record it; recorded
-  fixtures hold request and response bodies only, never headers.
+  `api/src/route_api/main.py`, the nightly `api/src/route_api/canary.py` and the manual
+  `api/scripts/record_heigit.py` read it, and it is sent only as the `Authorization`
+  header to the fixed `api.heigit.org` directions URL (`api/src/route_api/heigit.py`).
+  Never print, log, commit or record it; recorded fixtures hold request and response
+  bodies only, never headers.
 - A generated route is never edited: the selected candidate's stored geometry is what the
   page draws and what the GPX contains. Invalid candidates are rejected, not repaired.
 - `ONEMAP_API_TOKEN` stays server side the same way: `app_from_env` in
@@ -37,6 +38,8 @@ live in `tomjwright/home` `AGENTS.md`; this file adds the rules for this repo.
 - Live runs are manual and bounded: `feasibility/scripts/run_live_cases.sh` makes at
   most 38 HeiGIT requests and `api/scripts/record_heigit.py` at most 5 per scenario
   (free plan: 2000 directions a day, 40 a minute).
+- The only scheduled live call is `.github/workflows/provider-canary.yml`: one OneMap search
+  (no token, so an expired token never fails it) and two HeiGIT directions a night.
 - Downloaded datasets go in `feasibility/data/` (git-ignored).
 
 ## Checks
