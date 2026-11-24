@@ -4,8 +4,10 @@
 #   outage: the Synthetic Monitoring HTTP check on /api/health has failed for 10 minutes
 #   errors: more than 2 generate_route spans in the last hour ended with an error code
 #   quota:  HeiGIT answered 429 in the last hour
-# Tempo alerts need TraceQL metrics (count_over_time, an instant query) and a threshold
-# expression; a TraceQL search with `| count() > n` does not evaluate in alerting.
+# Each rule emails Tom through the stack's "Synthetic Monitoring email" contact point.
+# Tempo alerts need TraceQL metrics (count_over_time, an instant query), reduced to one
+# number, then a threshold: a TraceQL search with `| count() > n` does not evaluate, and
+# a threshold straight on the TraceQL result fails as "only reduced data can be alerted on".
 apiVersion: 1
 groups:
   - orgId: 1
@@ -34,6 +36,7 @@ groups:
         # No probe results means the check itself is gone, which hides an outage.
         noDataState: Alerting
         labels: { severity: page }
+        notification_settings: { receiver: Synthetic Monitoring email }
       - uid: route-api-generation-errors
         title: Loop generation is failing
         condition: errors
@@ -47,15 +50,22 @@ groups:
               queryType: traceql
               metricsQueryType: instant
               query: '{ name = "generate_route" && span.route.error_code != "none" } | count_over_time()'
+          - refId: total
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              reducer: sum
+              expression: spans
           - refId: errors
             datasourceUid: __expr__
             model:
               type: threshold
-              expression: spans
+              expression: total
               conditions:
                 - evaluator: { type: gt, params: [2] }
         noDataState: OK
         labels: { severity: warn }
+        notification_settings: { receiver: Synthetic Monitoring email }
       - uid: route-api-heigit-quota
         title: HeiGIT quota used up
         condition: quota
@@ -69,12 +79,19 @@ groups:
               queryType: traceql
               metricsQueryType: instant
               query: '{ name = "heigit.directions" && span.http.response.status_code = 429 } | count_over_time()'
+          - refId: total
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              reducer: sum
+              expression: spans
           - refId: quota
             datasourceUid: __expr__
             model:
               type: threshold
-              expression: spans
+              expression: total
               conditions:
                 - evaluator: { type: gt, params: [0] }
         noDataState: OK
         labels: { severity: warn }
+        notification_settings: { receiver: Synthetic Monitoring email }
