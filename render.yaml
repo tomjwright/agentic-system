@@ -1,0 +1,41 @@
+# Render Blueprint for the route API (docs/hosting.md). Free plan: no pre-deploy command,
+# so the start command migrates before serving. Render only switches traffic once
+# /api/ready answers 200; if migration or start fails, the previous instance keeps serving.
+# Deploys come only from the promotion workflow (.github/workflows/deploy.yml).
+services:
+  - type: web
+    name: route-api
+    runtime: python
+    plan: free
+    region: singapore
+    branch: main
+    autoDeployTrigger: "off"
+    buildCommand: pip install uv==0.13.9 && cd api && uv sync --frozen --no-dev
+    startCommand: >-
+      cd api && uv run --no-sync alembic upgrade head &&
+      exec uv run --no-sync uvicorn route_api.main:app_from_env --factory
+      --host 0.0.0.0 --port $PORT --no-access-log
+    healthCheckPath: /api/ready
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.12
+      - key: APP_ORIGIN
+        sync: false # https://<vercel production domain>
+      - key: DATABASE_URL
+        sync: false # Neon direct (non-pooled) URL, postgresql+psycopg://...?sslmode=require
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: OWNER_GITHUB_IDS
+        value: "119127762"
+      - key: SMOKE_TOKEN_SHA256
+        sync: false
+      - key: ONEMAP_API_TOKEN
+        sync: false
+      - key: HEIGIT_API_KEY
+        sync: false
+      - key: OTEL_EXPORTER_OTLP_ENDPOINT
+        sync: false # Grafana Cloud OTLP gateway
+      - key: OTEL_EXPORTER_OTLP_HEADERS
+        sync: false # Authorization=Basic <base64 instance-id:token>

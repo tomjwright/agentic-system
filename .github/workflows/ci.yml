@@ -194,6 +194,40 @@ jobs:
           name: playwright-report
           path: web/test-results/
 
+  render-smoke:
+    # render.yaml's build and start commands, exactly as written, on a fresh runner and
+    # PostgreSQL 17 (scripts/render_smoke.sh). Fails unless /api/ready answers 200. Provider
+    # settings are synthetic: readiness only checks they are set, and nothing calls a provider.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: routes_render
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/routes_render
+      APP_ORIGIN: https://app.example.invalid
+      OWNER_GITHUB_IDS: "119127762"
+      GITHUB_CLIENT_ID: synthetic-client
+      GITHUB_CLIENT_SECRET: synthetic-github-secret-must-not-ship
+      ONEMAP_API_TOKEN: synthetic-onemap-token-must-not-ship
+      HEIGIT_API_KEY: synthetic-heigit-key-must-not-ship
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: The Python render.yaml asks Render for
+        id: python
+        run: echo "version=$(yq -e '.services[0].envVars[] | select(.key == "PYTHON_VERSION") | .value' render.yaml)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ steps.python.outputs.version }}
+      - run: scripts/render_smoke.sh
+
   secrets-scan:
     # Scans the whole git history on every run, so no commit range (merge pushes, long PRs) is skipped.
     runs-on: ubuntu-latest
