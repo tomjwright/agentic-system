@@ -59,6 +59,7 @@ uv run ruff check . && uv run ruff format --check .
 uv run mypy
 uv run pytest --cov    # fails below the branch-coverage floor in pyproject.toml
 uv export --frozen --no-emit-project --no-emit-package route-feasibility | uv run pip-audit --strict --disable-pip -r /dev/stdin
+(cd .. && api/scripts/previous_release_tests.sh origin/main)   # the release before this one, on this schema
 
 cd ../web
 npm ci
