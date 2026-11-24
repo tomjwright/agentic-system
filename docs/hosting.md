@@ -188,7 +188,11 @@ With `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` set the API 
 spans (`generate_route` with `route.error_code`, `heigit.directions` with the HTTP status).
 `ops/grafana/alerts.yaml` holds three rules: outage (a Grafana Synthetic Monitoring HTTP
 check named `route-api-health` on `/api/health` failing for 10 minutes), generation errors
-and HeiGIT quota. They are not yet imported or tried against a real stack.
+and HeiGIT quota. Each rule's queries evaluate on the real stack (`POST /api/v1/eval`);
+`ops/grafana/import_alerts.py` imports them. The
+outage rule alerts on no data too, so it fires until the Synthetic Monitoring check exists.
+Alerts reach someone only once the stack has a contact point and the notification policy
+sends to it.
 
 ## GitHub settings (Tom, as repository admin)
 
@@ -196,8 +200,6 @@ The agent token has no admin rights, so nothing here is applied by an agent. The
 `production` environment with its main-only branch policy already exists. Before
 `deploy.yml` reaches `main`:
 
-- Add `render-smoke` and `vercel-build` to the required checks on `main`, so a PR cannot
-  merge with them failing (the deploy already refuses without them).
 - Environment `production` secrets: `VERCEL_TOKEN`, `RENDER_API_KEY`,
   `VERCEL_AUTOMATION_BYPASS_SECRET`, `SMOKE_TOKEN`, `E2E_TOKEN`. Variables:
   `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `RENDER_SERVICE_ID`, `PRODUCTION_URL`.
