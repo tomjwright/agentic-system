@@ -26,6 +26,9 @@ live in `tomjwright/home` `AGENTS.md`; this file adds the rules for this repo.
   `api/src/route_api/main.py` reads it and hands it to `onemap.py`, which sends it only as
   the `Authorization` header to OneMap's search endpoint. The browser
   never calls a OneMap API; it only loads OneMap basemap tiles, which need no token.
+- `ANTHROPIC_API_KEY` (the route agent's model) and `GOOGLE_API_KEY` (its judge) stay server
+  side the same way: only `models_from_env` in `api/src/route_api/llm.py` reads them, to build
+  the chat models. Without both, only the agent endpoint is off (503); the rest of the app runs.
 - Never pick a place for the user: every OneMap match is listed and the user confirms one.
 - Tests never call a live provider. They replay recorded real responses through
   `httpx.MockTransport` (`feasibility/tests/test_cli.py`, `api/tests/recorded_onemap.py`,

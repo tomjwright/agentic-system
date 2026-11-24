@@ -32,7 +32,7 @@ from fastapi import Request
 from sqlalchemy import Engine, delete, func, select
 from sqlalchemy.orm import Session
 
-from route_api.db import GenerationRunRecord, OwnerSessionRecord
+from route_api.db import AgentRunRecord, GenerationRunRecord, OwnerSessionRecord
 
 AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
 TOKEN_URL = "https://github.com/login/oauth/access_token"  # noqa: S105 (a URL)
@@ -258,7 +258,7 @@ class Auth:
         """Refuse a new run once the owner started their daily runs in the last 24 hours,
         and an e2e run within 10 minutes of the last one. Holds a lock on the owner until the
         session's transaction ends, so concurrent requests cannot both pass the same check."""
-        session.execute(select(func.pg_advisory_xact_lock(func.hashtext(owner_id))))
+        self.lock_owner(session, owner_id)
         now = datetime.now(UTC)
         runs_per_day = self.runs_per_day
         if owner_id == E2E_OWNER:
@@ -272,14 +272,27 @@ class Auth:
                 429, "run_limit_reached", f"At most {runs_per_day} runs a day; try tomorrow"
             )
 
+    def lock_owner(self, session: Session, owner_id: str) -> None:
+        """Hold the owner until the session's transaction ends, so their runs are counted
+        and saved one transaction at a time."""
+        session.execute(select(func.pg_advisory_xact_lock(func.hashtext(owner_id))))
+
     def runs_started_since(self, session: Session, owner_id: str, since: datetime) -> int:
+        """Generation runs, plus agent runs that made none (a clarification, or not yet)."""
         started = session.scalar(
             select(func.count())
             .select_from(GenerationRunRecord)
             .where(GenerationRunRecord.owner_id == owner_id)
             .where(GenerationRunRecord.started_at > since)
         )
-        return started or 0
+        unrouted_agent_runs = session.scalar(
+            select(func.count())
+            .select_from(AgentRunRecord)
+            .where(AgentRunRecord.owner_id == owner_id)
+            .where(AgentRunRecord.generation_run_id.is_(None))
+            .where(AgentRunRecord.started_at > since)
+        )
+        return (started or 0) + (unrouted_agent_runs or 0)
 
 
 def auth_from_env(engine: Engine) -> Auth:

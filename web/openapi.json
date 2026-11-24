@@ -821,6 +821,257 @@
         }
       }
     },
+    "/api/route-requests/{route_request_id}/agent-runs": {
+      "post": {
+        "summary": "Start Agent Run",
+        "description": "Ask the route agent for a loop from the confirmed start. Every answer it gives\nwas approved by the judge or written by code from measured facts.",
+        "operationId": "start_agent_run_api_route_requests__route_request_id__agent_runs_post",
+        "parameters": [
+          {
+            "name": "route_request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Route Request Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentRunCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAnswer"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/api/agent-runs/{agent_run_id}": {
+      "get": {
+        "summary": "Get Agent Run",
+        "operationId": "get_agent_run_api_agent_runs__agent_run_id__get",
+        "parameters": [
+          {
+            "name": "agent_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Agent Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRun"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
     "/api/runs/{run_id}": {
       "get": {
         "summary": "Get Run",
@@ -1219,6 +1470,200 @@
         ],
         "title": "AccessCheck"
       },
+      "AgentAnswer": {
+        "properties": {
+          "run": {
+            "$ref": "#/components/schemas/AgentRun"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "An approved draft or the factual fallback; not stored"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run",
+          "message"
+        ],
+        "title": "AgentAnswer"
+      },
+      "AgentRun": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "route_request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Route Request Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "finished"
+            ],
+            "title": "Status"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "clarification",
+                  "route",
+                  "no_route",
+                  "failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "message_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "approved_draft",
+                  "fallback"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Source",
+            "description": "An approved draft, or the factual answer code writes when none is approved"
+          },
+          "fallback_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Reason"
+          },
+          "approvals": {
+            "items": {
+              "type": "boolean"
+            },
+            "type": "array",
+            "title": "Approvals",
+            "description": "The judge's decision on each draft; its reasons stay on the server"
+          },
+          "repairs": {
+            "type": "integer",
+            "title": "Repairs"
+          },
+          "agent_model": {
+            "type": "string",
+            "title": "Agent Model"
+          },
+          "judge_model": {
+            "type": "string",
+            "title": "Judge Model"
+          },
+          "generation_run_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Run Id",
+            "description": "The stored run whose selected route the page draws and the GPX holds"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "route_request_id",
+          "status",
+          "kind",
+          "message_source",
+          "fallback_reason",
+          "approvals",
+          "repairs",
+          "agent_model",
+          "judge_model",
+          "generation_run_id",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "AgentRun",
+        "description": "How one route agent answer was made and judged. The brief and the answer are not kept."
+      },
+      "AgentRunCreate": {
+        "properties": {
+          "brief": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Brief",
+            "description": "What the user typed; not stored"
+          },
+          "distance": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/DistanceTarget"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DistanceRange"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "kind",
+                  "mapping": {
+                    "range": "#/components/schemas/DistanceRange",
+                    "target": "#/components/schemas/DistanceTarget"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance",
+            "description": "The form's distance, if any"
+          }
+        },
+        "type": "object",
+        "required": [
+          "brief"
+        ],
+        "title": "AgentRunCreate"
+      },
       "Candidate": {
         "properties": {
           "source": {
@@ -1438,7 +1883,9 @@
               "provider_quota_exhausted",
               "operation_conflict",
               "no_route_selected",
-              "generation_interrupted"
+              "generation_interrupted",
+              "agent_not_configured",
+              "agent_failed"
             ],
             "title": "Code"
           },

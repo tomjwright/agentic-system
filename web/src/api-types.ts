@@ -195,6 +195,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/route-requests/{route_request_id}/agent-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Agent Run
+         * @description Ask the route agent for a loop from the confirmed start. Every answer it gives
+         *     was approved by the judge or written by code from measured facts.
+         */
+        post: operations["start_agent_run_api_route_requests__route_request_id__agent_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/{agent_run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Agent Run */
+        get: operations["get_agent_run_api_agent_runs__agent_run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{run_id}": {
         parameters: {
             query?: never;
@@ -265,6 +303,81 @@ export interface components {
             source: string | null;
             /** Roads */
             roads: components["schemas"]["RestrictedRoad"][];
+        };
+        /** AgentAnswer */
+        AgentAnswer: {
+            run: components["schemas"]["AgentRun"];
+            /**
+             * Message
+             * @description An approved draft or the factual fallback; not stored
+             */
+            message: string;
+        };
+        /**
+         * AgentRun
+         * @description How one route agent answer was made and judged. The brief and the answer are not kept.
+         */
+        AgentRun: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Route Request Id
+             * Format: uuid
+             */
+            route_request_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "finished";
+            /** Kind */
+            kind: ("clarification" | "route" | "no_route" | "failed") | null;
+            /**
+             * Message Source
+             * @description An approved draft, or the factual answer code writes when none is approved
+             */
+            message_source: ("approved_draft" | "fallback") | null;
+            /** Fallback Reason */
+            fallback_reason: string | null;
+            /**
+             * Approvals
+             * @description The judge's decision on each draft; its reasons stay on the server
+             */
+            approvals: boolean[];
+            /** Repairs */
+            repairs: number;
+            /** Agent Model */
+            agent_model: string;
+            /** Judge Model */
+            judge_model: string;
+            /**
+             * Generation Run Id
+             * @description The stored run whose selected route the page draws and the GPX holds
+             */
+            generation_run_id: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Finished At */
+            finished_at: string | null;
+        };
+        /** AgentRunCreate */
+        AgentRunCreate: {
+            /**
+             * Brief
+             * @description What the user typed; not stored
+             */
+            brief: string;
+            /**
+             * Distance
+             * @description The form's distance, if any
+             */
+            distance?: (components["schemas"]["DistanceTarget"] | components["schemas"]["DistanceRange"]) | null;
         };
         /** Candidate */
         Candidate: {
@@ -349,7 +462,7 @@ export interface components {
              * Code
              * @enum {string}
              */
-            code: "invalid_request" | "outside_singapore" | "candidate_not_found" | "not_found" | "provider_not_configured" | "provider_unavailable" | "provider_rejected" | "provider_response_invalid" | "provider_quota_exhausted" | "operation_conflict" | "no_route_selected" | "generation_interrupted";
+            code: "invalid_request" | "outside_singapore" | "candidate_not_found" | "not_found" | "provider_not_configured" | "provider_unavailable" | "provider_rejected" | "provider_response_invalid" | "provider_quota_exhausted" | "operation_conflict" | "no_route_selected" | "generation_interrupted" | "agent_not_configured" | "agent_failed";
             /** Message */
             message: string;
         };
@@ -1325,6 +1438,216 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GenerationRun"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    start_agent_run_api_route_requests__route_request_id__agent_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                route_request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentRunCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAnswer"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_agent_run_api_agent_runs__agent_run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRun"];
                 };
             };
             /** @description Unauthorized */

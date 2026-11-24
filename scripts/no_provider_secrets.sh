@@ -8,6 +8,7 @@ set -euo pipefail
 if grep -rl \
   -e "api.heigit.org" -e "HEIGIT_API_KEY" \
   -e "onemap.gov.sg/api" -e "ONEMAP_API_TOKEN" \
+  -e "ANTHROPIC_API_KEY" -e "GOOGLE_API_KEY" \
   -e "must-not-ship" \
   "$1"; then
   echo "A provider key or URL reached the built page (files above)." >&2

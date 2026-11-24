@@ -7,6 +7,7 @@ import httpx2
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import Engine, text
 
 from route_api.migrate import API_DIR, applied_revision, known_revisions, migrate
@@ -22,6 +23,10 @@ def database_at(clean_engine: Engine) -> Iterator[Engine]:
     yield clean_engine
     with clean_engine.begin() as connection:
         connection.execute(text("UPDATE alembic_version SET version_num = :v"), {"v": head})
+
+
+def head() -> str | None:
+    return ScriptDirectory(str(API_DIR / "migrations")).get_current_head()
 
 
 def set_revision(engine: Engine, revision: str) -> None:
@@ -40,7 +45,7 @@ def test_a_database_at_this_release_is_upgraded_in_place(
 ) -> None:
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://nobody@127.0.0.1:1/none")
     assert migrate(database_url) == "database at this release's head"
-    assert applied_revision(database_at) == "0004"
+    assert applied_revision(database_at) == head()
 
 
 def test_a_database_a_newer_release_migrated_is_left_as_it_is(
@@ -61,17 +66,22 @@ def test_a_database_behind_this_release_is_not_ready_until_migrated(
     api = anonymous(api_with(database_at, httpx.MockTransport(recorded_response), "token"))
     config = Config(str(API_DIR / "alembic.ini"))
     config.set_main_option("sqlalchemy.url", database_url)
-    command.downgrade(config, "0003")
+    command.downgrade(config, "-1")
     answer = api.get("/api/ready")
     assert answer.status_code == 503
     assert answer.json()["migrations"] == "behind"
     assert migrate(database_url) == "database at this release's head"
-    assert applied_revision(database_at) == "0004"
+    assert applied_revision(database_at) == head()
     assert api.get("/api/ready").json()["migrations"] == "current"
 
 
 def test_every_migration_is_known() -> None:
-    assert known_revisions() == {"0001", "0002", "0003", "0004"}
+    files = (API_DIR / "migrations" / "versions").glob("[0-9][0-9][0-9][0-9]_*.py")
+    numbers = set()
+    for file in files:
+        numbers.add(file.name[:4])
+    assert known_revisions() == numbers
+    assert "0001" in numbers
 
 
 def test_a_percent_encoded_database_url_migrates(database_at: Engine, database_url: str) -> None:

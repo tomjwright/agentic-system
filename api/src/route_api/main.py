@@ -25,6 +25,15 @@ from sqlalchemy import Engine, create_engine, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from route_api.agent import run_agent
+from route_api.agent_models import RunRequest, RunStart
+from route_api.agent_runs import (
+    fail_agent_run,
+    find_agent_run,
+    finish_agent_run,
+    new_agent_run,
+    to_agent_run,
+)
 from route_api.auth import (
     LOGIN_COOKIE,
     LOGIN_SECONDS,
@@ -38,6 +47,9 @@ from route_api.auth import (
     end_session,
 )
 from route_api.contracts import (
+    AgentAnswer,
+    AgentRun,
+    AgentRunCreate,
     Candidate,
     ConfirmedStart,
     ErrorResponse,
@@ -58,6 +70,7 @@ from route_api.generation import generate
 from route_api.geography import on_singapore_land
 from route_api.gpx import route_to_gpx
 from route_api.heigit import Heigit
+from route_api.llm import Models, models_from_env
 from route_api.logs import configure_logging, log_event
 from route_api.migrate import known_revisions
 from route_api.onemap import OneMap, ProviderError
@@ -157,6 +170,7 @@ def create_app(
     auth: Auth,
     heigit: Heigit,
     restricted_ways: RestrictedWays,
+    models: Models | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="Singapore route creator API",
@@ -507,6 +521,92 @@ def create_app(
             )
         return found
 
+    @app.post(
+        "/api/route-requests/{route_request_id}/agent-runs", status_code=201, responses=ERRORS
+    )
+    def start_agent_run(
+        route_request_id: uuid.UUID, body: AgentRunCreate, request: Request, owner: Owner
+    ) -> AgentAnswer:
+        """Ask the route agent for a loop from the confirmed start. Every answer it gives
+        was approved by the judge or written by code from measured facts."""
+        with Session(engine) as session:
+            route_request = find_route_request(session, owner, route_request_id)
+            if models is None:
+                raise ApiError(503, "agent_not_configured", "The route assistant is not configured")
+            if not heigit.configured:
+                raise ApiError(503, "provider_not_configured", "Route generation is not configured")
+            auth.check_run_budget(session, owner)
+            activity = route_request.activity
+            start = RunStart(
+                name=route_request.start_name,
+                coordinates=(route_request.start_lon, route_request.start_lat),
+            )
+            run = new_agent_run(session, owner, route_request_id, models)
+            session.commit()
+
+            agent_request = RunRequest(
+                run_id=run.id,
+                brief=body.brief,
+                activity=activity,  # type: ignore[arg-type]
+                distance=body.distance,
+                start=start,
+            )
+            started = time.monotonic()
+            try:
+                result = run_agent(
+                    agent_request, models.agent, models.judge, heigit, restricted_ways
+                )
+                if result.generation is not None and result.facts is not None:
+                    restriction_data = None
+                    if activity == "road_cycling":
+                        restriction_data = restricted_ways.source
+                    auth.lock_owner(session, owner)
+                    generation_run = new_run(
+                        session,
+                        owner,
+                        route_request_id,
+                        result.facts.activity,
+                        restriction_data,
+                        run.id,
+                        result.facts.requested,
+                        distance_bounds(result.facts.requested),
+                    )
+                    save_generation(session, generation_run, result.generation)
+                    run.generation_run_id = generation_run.id
+                finish_agent_run(run, result)
+                session.commit()
+            except Exception as error:
+                session.rollback()
+                fail_agent_run(run)
+                session.commit()
+                log_event(
+                    "agent_failed",
+                    request_id=request.state.request_id,
+                    agent_run_id=str(run.id),
+                    error=type(error).__name__,
+                )
+                message = "The route assistant failed; try again"
+                raise ApiError(500, "agent_failed", message) from None
+            log_event(
+                "agent_finished",
+                request_id=request.state.request_id,
+                agent_run_id=str(run.id),
+                kind=result.kind,
+                message_source=result.message_source,
+                fallback_reason=result.fallback_reason or "",
+                repairs=result.repairs,
+                duration_ms=round((time.monotonic() - started) * 1000),
+            )
+            return AgentAnswer(run=to_agent_run(run), message=result.message)
+
+    @app.get("/api/agent-runs/{agent_run_id}", responses=ERRORS)
+    def get_agent_run(agent_run_id: uuid.UUID, owner: Owner) -> AgentRun:
+        with Session(engine) as session:
+            run = find_agent_run(session, owner, agent_run_id)
+            if run is None:
+                raise ApiError(404, "not_found", "No such agent run")
+            return to_agent_run(run)
+
     @app.get("/api/runs/{run_id}", responses=ERRORS)
     def get_run(run_id: uuid.UUID, owner: Owner) -> GenerationRun:
         with Session(engine) as session:
@@ -564,5 +664,10 @@ def app_from_env() -> FastAPI:
     engine = create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
     purge_expired(engine, datetime.now(UTC))
     return create_app(
-        onemap, engine, auth_from_env(engine), heigit=heigit, restricted_ways=load_restricted_ways()
+        onemap,
+        engine,
+        auth_from_env(engine),
+        heigit=heigit,
+        restricted_ways=load_restricted_ways(),
+        models=models_from_env(),
     )

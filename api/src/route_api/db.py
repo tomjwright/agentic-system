@@ -124,3 +124,28 @@ class OwnerSessionRecord(Base):
     csrf_token: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AgentRunRecord(Base):
+    """One route agent run: how its answer was made and judged. The brief is not stored."""
+
+    __tablename__ = "agent_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(64))
+    route_request_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("route_requests.id", ondelete="CASCADE"), index=True
+    )
+    generation_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("generation_runs.id", ondelete="CASCADE"), unique=True
+    )
+    status: Mapped[str] = mapped_column(String(20))
+    kind: Mapped[str | None] = mapped_column(String(20))
+    message_source: Mapped[str | None] = mapped_column(String(20))
+    fallback_reason: Mapped[str | None] = mapped_column(String(40))
+    verdicts: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    repairs: Mapped[int]
+    agent_model: Mapped[str] = mapped_column(String(100))
+    judge_model: Mapped[str] = mapped_column(String(100))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
