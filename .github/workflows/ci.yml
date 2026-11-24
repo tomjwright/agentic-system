@@ -226,9 +226,15 @@ jobs:
       - name: The Python render.yaml asks Render for
         id: python
         run: echo "version=$(yq -e '.services[0].envVars[] | select(.key == "PYTHON_VERSION") | .value' render.yaml)" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
         with:
-          python-version: ${{ steps.python.outputs.version }}
+          enable-cache: false
+      - name: Put that exact Python, with pip, on PATH (setup-python lacks some patches)
+        env:
+          PYTHON_VERSION: ${{ steps.python.outputs.version }}
+        run: |
+          uv venv --seed --python "$PYTHON_VERSION" "$RUNNER_TEMP/render-python"
+          echo "$RUNNER_TEMP/render-python/bin" >> "$GITHUB_PATH"
       - run: scripts/render_smoke.sh
 
   vercel-build:
