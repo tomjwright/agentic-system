@@ -1,5 +1,7 @@
 """Run the API with OneMap, HeiGIT and GitHub replaced by recorded or fake responses, for the
-browser tests. "Sign in with GitHub" goes to a fake authorize page that signs Tom in.
+browser tests. "Sign in with GitHub" goes to a fake authorize page that signs Tom in. With
+E2E_TOKEN_SHA256 set, the staged browser test's e2e owner signs in by bearer token instead
+(web/playwright.staged.config.ts), starting with none of its earlier route requests.
 
 Run: uv run python -m tests.serve_recorded (needs DATABASE_URL, migrated)
 """
@@ -10,9 +12,11 @@ from urllib.parse import urlencode
 import httpx
 import uvicorn
 from fastapi.responses import RedirectResponse
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, delete
+from sqlalchemy.orm import Session
 
-from route_api.auth import Auth, GitHubOAuth
+from route_api.auth import E2E_OWNER, Auth, GitHubOAuth
+from route_api.db import RouteRequestRecord
 from route_api.heigit import Heigit
 from route_api.logs import configure_logging
 from route_api.main import create_app
@@ -42,7 +46,20 @@ def main() -> None:
     )
     # Every browser test signs in as Tom, so the per-owner limits are raised (test_auth.py
     # covers them).
-    auth = Auth(engine, github, app_origin, requests_per_minute=10_000, runs_per_day=10_000)
+    e2e_token_sha256 = os.environ.get("E2E_TOKEN_SHA256")
+    if e2e_token_sha256:
+        with Session(engine) as session, session.begin():
+            session.execute(
+                delete(RouteRequestRecord).where(RouteRequestRecord.owner_id == E2E_OWNER)
+            )
+    auth = Auth(
+        engine,
+        github,
+        app_origin,
+        e2e_token_sha256=e2e_token_sha256,
+        requests_per_minute=10_000,
+        runs_per_day=10_000,
+    )
     app = create_app(onemap, engine, auth, heigit=heigit, restricted_ways=load_restricted_ways())
 
     @app.get("/api/fake-github/authorize")

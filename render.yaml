@@ -31,6 +31,8 @@ services:
         value: "119127762"
       - key: SMOKE_TOKEN_SHA256
         sync: false
+      - key: E2E_TOKEN_SHA256
+        sync: false # the staged browser test's owner (api/src/route_api/auth.py)
       - key: ONEMAP_API_TOKEN
         sync: false
       - key: HEIGIT_API_KEY

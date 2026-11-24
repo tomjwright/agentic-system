@@ -130,6 +130,7 @@ def settings(browser_tests: list[str] = PASSING_BROWSER_TESTS) -> Settings:
         production_url=PRODUCTION,
         vercel_bypass_secret="bypass",
         smoke_token="smoke-token",
+        e2e_token="e2e-token",
         browser_tests=browser_tests,
         poll_seconds=1,
         checks_timeout_seconds=3,
@@ -236,11 +237,16 @@ def test_the_browser_tests_see_the_staged_page_but_no_provider_token(
     hosts: FakeHosts, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("RENDER_API_KEY", "rnd")
+    monkeypatch.setenv("SMOKE_TOKEN", "smoke-token")
+    monkeypatch.setenv("VERCEL_TOKEN", "vc")
     monkeypatch.setenv("CI", "true")
     check_env = (
         "import os; e = os.environ;"
         f"assert e['STAGED_URL'] == {STAGED!r}, e;"
         "assert e['VERCEL_AUTOMATION_BYPASS_SECRET'] == 'bypass';"
+        "assert e['E2E_TOKEN'] == 'e2e-token';"
+        "assert 'SMOKE_TOKEN' not in e;"
+        "assert 'VERCEL_TOKEN' not in e;"
         "assert e['CI'] == 'true';"
         "assert 'RENDER_API_KEY' not in e;"
         "assert os.path.basename(os.getcwd()) == 'web'"
@@ -316,6 +322,7 @@ def test_settings_come_from_the_workflow_environment(monkeypatch: pytest.MonkeyP
         "PRODUCTION_URL": PRODUCTION,
         "VERCEL_AUTOMATION_BYPASS_SECRET": "bypass",
         "SMOKE_TOKEN": "smoke-token",
+        "E2E_TOKEN": "e2e-token",
     }
     for name, value in values.items():
         monkeypatch.setenv(name, value)
@@ -331,3 +338,4 @@ def test_settings_come_from_the_workflow_environment(monkeypatch: pytest.MonkeyP
     assert (loaded.poll_seconds, loaded.checks_timeout_seconds) == (10, 3600)
     assert loaded.deploy_timeout_seconds == 1200
     assert loaded.smoke_token == "smoke-token"
+    assert loaded.e2e_token == "e2e-token"

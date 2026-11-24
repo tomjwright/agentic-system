@@ -183,6 +183,8 @@ jobs:
         env:
           HEIGIT_API_KEY: synthetic-heigit-key-must-not-ship
         run: npm run e2e
+      - name: The deploy's staged browser test, against the recorded API from an origin it does not trust
+        run: npm run e2e:staged
       - name: No OneMap or HeiGIT call, token or key in the browser bundle
         run: |
           if grep -rl -e "onemap.gov.sg/api" -e "ONEMAP_API_TOKEN" .next/static; then exit 1; fi

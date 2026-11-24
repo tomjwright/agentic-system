@@ -121,7 +121,7 @@ def test_the_page_is_built_scanned_and_staged_before_promotion() -> None:
     build = step_named("Build the page")
     scan = step_named("No provider key")
     stage = step_named("Stage the page")
-    install_browser_tests = step_named("Install the staged browser tests")
+    install_browser_tests = step_named("Install the staged browser test")
     promote = step_named("Promote")
     assert build < scan < stage < install_browser_tests < promote == len(steps) - 1
     assert "build --prod" in steps[build]["run"]
@@ -154,6 +154,7 @@ def test_secrets_reach_only_the_steps_that_need_them() -> None:
             "VERCEL_TOKEN",
             "VERCEL_AUTOMATION_BYPASS_SECRET",
             "SMOKE_TOKEN",
+            "E2E_TOKEN",
         },
     }
     assert "secrets." not in str(promote_job()["env"])

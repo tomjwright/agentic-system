@@ -10,7 +10,9 @@ staged (not yet live) page deployment at STAGED_URL:
 2. Deploy the API on Render. Its start command migrates first; if migration or start fails
    Render keeps the previous instance serving, and promotion stops here.
 3. Smoke-test the staged page (with the deployment protection bypass) against the new API,
-   then run the staged browser tests (web/playwright.staged.config.ts) against it.
+   then run the staged browser test (web/playwright.staged.config.ts) against it: one full
+   search, generate and GPX download as the e2e owner (E2E_TOKEN), which the API allows one
+   run every 10 minutes and 3 a day.
 4. Promote the staged page, then smoke-test production.
 5. A failed staged check rolls the API back to its previous live deploy; a failed production
    smoke test also rolls the page back to its previous production deployment.
@@ -38,7 +40,14 @@ RENDER_FAILED = {"build_failed", "update_failed", "pre_deploy_failed", "canceled
 WEB_DIR = Path(__file__).parents[3] / "web"
 STAGED_BROWSER_TESTS = ["npx", "playwright", "test", "--config", "playwright.staged.config.ts"]
 # The only variables the browser tests see; the provider tokens stay with this process.
-BROWSER_TEST_ENV = ["PATH", "HOME", "CI", "STAGED_URL", "VERCEL_AUTOMATION_BYPASS_SECRET"]
+BROWSER_TEST_ENV = [
+    "PATH",
+    "HOME",
+    "CI",
+    "STAGED_URL",
+    "VERCEL_AUTOMATION_BYPASS_SECRET",
+    "E2E_TOKEN",
+]
 
 
 class PromotionStopped(Exception):
@@ -59,6 +68,7 @@ class Settings:
     production_url: str
     vercel_bypass_secret: str
     smoke_token: str
+    e2e_token: str
     browser_tests: list[str] = field(default_factory=STAGED_BROWSER_TESTS.copy)
     poll_seconds: float = 10
     checks_timeout_seconds: float = 60 * 60
@@ -206,6 +216,7 @@ class Promotion:
         env = {
             "STAGED_URL": s.staged_url,
             "VERCEL_AUTOMATION_BYPASS_SECRET": s.vercel_bypass_secret,
+            "E2E_TOKEN": s.e2e_token,
         }
         for name in BROWSER_TEST_ENV:
             if name not in env and name in os.environ:
@@ -245,6 +256,7 @@ def settings_from_env() -> Settings:
         production_url=env["PRODUCTION_URL"],
         vercel_bypass_secret=env["VERCEL_AUTOMATION_BYPASS_SECRET"],
         smoke_token=env["SMOKE_TOKEN"],
+        e2e_token=env["E2E_TOKEN"],
     )
 
 
