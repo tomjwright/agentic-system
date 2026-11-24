@@ -256,7 +256,9 @@ class Auth:
 
     def check_run_budget(self, session: Session, owner_id: str) -> None:
         """Refuse a new run once the owner started their daily runs in the last 24 hours,
-        and an e2e run within 10 minutes of the last one."""
+        and an e2e run within 10 minutes of the last one. Holds a lock on the owner until the
+        session's transaction ends, so concurrent requests cannot both pass the same check."""
+        session.execute(select(func.pg_advisory_xact_lock(func.hashtext(owner_id))))
         now = datetime.now(UTC)
         runs_per_day = self.runs_per_day
         if owner_id == E2E_OWNER:

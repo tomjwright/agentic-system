@@ -13,7 +13,7 @@ import httpx
 import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, update
+from sqlalchemy import Engine, text, update
 from sqlalchemy.orm import Session
 
 from route_api.auth import auth_from_env, create_session
@@ -411,3 +411,17 @@ def test_readiness_fails_when_a_provider_is_not_configured(clean_engine: Engine)
     assert ready.status_code == 503
     assert ready.json()["status"] == "not_ready"
     assert ready.json()["missing"] == ["ONEMAP_API_TOKEN"]
+
+
+def test_checking_the_run_budget_holds_the_owner_until_the_run_is_saved(
+    clean_engine: Engine,
+) -> None:
+    auth = auth_from_env(clean_engine)
+    lock = text("SELECT pg_try_advisory_xact_lock(hashtext(:owner))")
+    with Session(clean_engine) as checking, Session(clean_engine) as concurrent:
+        auth.check_run_budget(checking, "e2e")
+        assert concurrent.scalar(lock, {"owner": "e2e"}) is False
+        assert concurrent.scalar(lock, {"owner": "github:1"}) is True
+        concurrent.rollback()
+        checking.commit()
+        assert concurrent.scalar(lock, {"owner": "e2e"}) is True
