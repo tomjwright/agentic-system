@@ -10,6 +10,7 @@ from datetime import timedelta
 from urllib.parse import parse_qs, urlparse
 
 import httpx
+import httpx2
 import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
@@ -60,13 +61,13 @@ def client_for(
     )
 
 
-def sign_in(api: TestClient, code: str = "good-code") -> httpx.Response:
+def sign_in(api: TestClient, code: str = "good-code") -> httpx2.Response:
     login = api.get("/api/auth/login", follow_redirects=False)
     assert login.status_code == 302
     query = parse_qs(urlparse(login.headers["location"]).query)
     assert query["code_challenge_method"] == ["S256"]
     assert "scope" not in query
-    callback: httpx.Response = api.get(
+    callback: httpx2.Response = api.get(
         "/api/auth/callback",
         params={"code": code, "state": query["state"][0]},
         follow_redirects=False,
@@ -80,11 +81,11 @@ def anonymous(api: TestClient) -> TestClient:
     return api
 
 
-def call(api: TestClient, route: APIRoute, headers: dict[str, str]) -> httpx.Response:
+def call(api: TestClient, route: APIRoute, headers: dict[str, str]) -> httpx2.Response:
     path = route.path.replace("{route_request_id}", str(uuid.uuid4()))
     path = path.replace("{run_id}", str(uuid.uuid4()))
     method = sorted(route.methods or [])[0]
-    response: httpx.Response = api.request(method, path, json={}, headers=headers)
+    response: httpx2.Response = api.request(method, path, json={}, headers=headers)
     return response
 
 
@@ -357,9 +358,9 @@ def test_the_e2e_owner_may_start_one_run_every_10_minutes_and_3_a_day(
     }
     request_id = api.post("/api/route-requests", json=start, headers=bearer).json()["id"]
 
-    def start_run() -> httpx.Response:
+    def start_run() -> httpx2.Response:
         body = {"operation_id": str(uuid.uuid4()), "distance": {"kind": "target", "target_km": 5}}
-        response: httpx.Response = api.post(
+        response: httpx2.Response = api.post(
             f"/api/route-requests/{request_id}/runs", json=body, headers=bearer
         )
         return response

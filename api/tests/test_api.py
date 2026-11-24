@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 import httpx
+import httpx2
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
@@ -18,24 +19,24 @@ SINGAPORE_STRAIT = [103.85, 1.20]
 HORT_PARK = [103.8005, 1.2795]
 
 
-def search(api: TestClient, query: str) -> httpx.Response:
-    response: httpx.Response = api.post("/api/places/search", json={"query": query})
+def search(api: TestClient, query: str) -> httpx2.Response:
+    response: httpx2.Response = api.post("/api/places/search", json={"query": query})
     return response
 
 
-def confirm_named(api: TestClient, query: str, source_id: str, owner: str = TOM) -> httpx.Response:
+def confirm_named(api: TestClient, query: str, source_id: str, owner: str = TOM) -> httpx2.Response:
     start = {"kind": "named", "query": query, "source_id": source_id}
     body = {"activity": "road_cycling", "start": start}
-    response: httpx.Response = api.post(
+    response: httpx2.Response = api.post(
         "/api/route-requests", json=body, headers=as_owner(api, owner)
     )
     return response
 
 
-def confirm_map(api: TestClient, coordinates: list[Any], owner: str = TOM) -> httpx.Response:
+def confirm_map(api: TestClient, coordinates: list[Any], owner: str = TOM) -> httpx2.Response:
     start = {"kind": "map", "point": {"type": "Point", "coordinates": coordinates}}
     body = {"activity": "running", "start": start}
-    response: httpx.Response = api.post(
+    response: httpx2.Response = api.post(
         "/api/route-requests", json=body, headers=as_owner(api, owner)
     )
     return response
@@ -168,6 +169,8 @@ def test_provider_outage_is_a_redacted_error(
     assert FAKE_TOKEN not in caplog.text
     provider_lines = []
     for record in caplog.records:
+        if record.name != "route_api":
+            continue  # the test client logs each request it makes
         line = json.loads(record.getMessage())
         if line["event"] == "provider_error":
             provider_lines.append(line)
@@ -235,6 +238,8 @@ def test_each_request_logs_one_json_line_with_its_request_id(
     assert response.headers["X-Request-ID"] == "trace-123"
     request_lines = []
     for record in caplog.records:
+        if record.name != "route_api":
+            continue  # the test client logs each request it makes
         line = json.loads(record.getMessage())
         if line["event"] == "request":
             request_lines.append(line)
