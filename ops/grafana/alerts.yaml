@@ -1,9 +1,11 @@
 # Grafana-managed alert rules for the route API (docs/hosting.md#telemetry-and-alerts).
-# Import with Alerting > Alert rules > Import, or the provisioning API, once the free stack
-# exists. Datasource uids are the stack defaults; check them after import.
+# Import with the provisioning API (POST /api/v1/provisioning/alert-rules per rule, folder
+# route-creator). Datasource uids are the stack defaults.
 #   outage: the Synthetic Monitoring HTTP check on /api/health has failed for 10 minutes
-#   errors: generate_route spans ended with a provider error code (more than 2 an hour)
-#   quota:  HeiGIT answered 429 / quota exhausted
+#   errors: more than 2 generate_route spans in the last hour ended with an error code
+#   quota:  HeiGIT answered 429 in the last hour
+# Tempo alerts need TraceQL metrics (count_over_time, an instant query) and a threshold
+# expression; a TraceQL search with `| count() > n` does not evaluate in alerting.
 apiVersion: 1
 groups:
   - orgId: 1
@@ -16,33 +18,63 @@ groups:
         condition: down
         for: 10m
         data:
-          - refId: down
+          - refId: success
             datasourceUid: grafanacloud-prom
             relativeTimeRange: { from: 600, to: 0 }
             model:
-              expr: max(probe_success{job="route-api-health"}) < 1
+              expr: max(probe_success{job="route-api-health"})
+              instant: true
+          - refId: down
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: success
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        # No probe results means the check itself is gone, which hides an outage.
+        noDataState: Alerting
         labels: { severity: page }
       - uid: route-api-generation-errors
         title: Loop generation is failing
         condition: errors
         for: 0m
         data:
-          - refId: errors
+          - refId: spans
+            queryType: traceql
             datasourceUid: grafanacloud-traces
             relativeTimeRange: { from: 3600, to: 0 }
             model:
               queryType: traceql
-              query: '{ name = "generate_route" && span.route.error_code != "none" } | count() > 2'
+              metricsQueryType: instant
+              query: '{ name = "generate_route" && span.route.error_code != "none" } | count_over_time()'
+          - refId: errors
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: spans
+              conditions:
+                - evaluator: { type: gt, params: [2] }
+        noDataState: OK
         labels: { severity: warn }
       - uid: route-api-heigit-quota
         title: HeiGIT quota used up
         condition: quota
         for: 0m
         data:
-          - refId: quota
+          - refId: spans
+            queryType: traceql
             datasourceUid: grafanacloud-traces
             relativeTimeRange: { from: 3600, to: 0 }
             model:
               queryType: traceql
-              query: '{ name = "heigit.directions" && span.http.response.status_code = 429 } | count() > 0'
+              metricsQueryType: instant
+              query: '{ name = "heigit.directions" && span.http.response.status_code = 429 } | count_over_time()'
+          - refId: quota
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: spans
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
         labels: { severity: warn }
