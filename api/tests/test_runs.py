@@ -12,6 +12,9 @@ from typing import Any
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from sqlalchemy import Engine, text
 
 from tests.conftest import SOMEONE, TOM, api_with, as_owner
@@ -459,3 +462,55 @@ def test_a_finished_run_logs_its_outcome_without_the_start(
     assert finished[0]["status"] == "succeeded"
     assert finished[0]["attempts"] == 2
     assert "103.8" not in json.dumps(finished)
+
+
+def generate_route_spans(monkeypatch: pytest.MonkeyPatch) -> InMemorySpanExporter:
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr("route_api.main.tracer", provider.get_tracer("test"))
+    return exporter
+
+
+@pytest.mark.parametrize(
+    ("status", "error_code"), [(200, "none"), (429, "provider_quota_exhausted")]
+)
+def test_the_generation_span_names_its_error_code_for_the_alert(
+    clean_engine: Engine, monkeypatch: pytest.MonkeyPatch, status: int, error_code: str
+) -> None:
+    exporter = generate_route_spans(monkeypatch)
+
+    def heigit(request: httpx.Request) -> httpx.Response:
+        if status == 200:
+            return recorded_response(request)
+        return httpx.Response(status, json={"error": "Quota exceeded"})
+
+    api = api_with_heigit(clean_engine, heigit)
+    start_run(api, confirm_start(api, AVENUE_SOUTH_BLOCK_11), {"kind": "target", "target_km": 5})
+
+    spans = [span for span in exporter.get_finished_spans() if span.name == "generate_route"]
+    assert len(spans) == 1
+    assert spans[0].attributes is not None
+    assert spans[0].attributes["route.error_code"] == error_code
+
+
+def test_generation_stops_starting_requests_once_its_time_budget_is_spent(
+    clean_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Each clock reading is 46 s after the last, so the 45 s budget is spent after one try
+    # and the run still answers inside Vercel's 120 s rewrite limit.
+    readings = iter(range(0, 10_000, 46))
+
+    def clock() -> int:
+        return next(readings)
+
+    monkeypatch.setattr("route_api.generation.time.monotonic", clock)
+    heigit = CountingHeigit()
+    api = api_with_heigit(clean_engine, heigit)
+    request_id = confirm_start(api, AVENUE_SOUTH_BLOCK_11)
+
+    run = start_run(api, request_id, {"kind": "range", "min_km": 5.0, "max_km": 5.05}).json()
+
+    assert run["status"] == "no_route"
+    assert len(run["candidates"]) == 1
+    assert len(heigit.requests) == 1

@@ -6,15 +6,18 @@ GitHub is replaced by an httpx.MockTransport that plays its OAuth token and user
 import hashlib
 import json
 import uuid
+from datetime import timedelta
 from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine
+from sqlalchemy import Engine, text, update
+from sqlalchemy.orm import Session
 
 from route_api.auth import auth_from_env, create_session
+from route_api.db import GenerationRunRecord
 from tests.conftest import FAKE_TOKEN, TOM_GITHUB_ID, api_with, as_owner
 from tests.recorded_onemap import recorded_response
 
@@ -22,6 +25,8 @@ OTHER_ALLOWED_ID = 2
 STRANGER_ID = 999
 PUBLIC_PATHS = {"/api/health", "/api/ready", "/api/auth/login", "/api/auth/callback"}
 SMOKE_TOKEN = "synthetic-smoke-token"
+E2E_TOKEN = "synthetic-e2e-token"
+STAGED_ORIGIN = "https://agentic-system-abc123.vercel.app"
 
 
 def github_user(user_id: int) -> httpx.MockTransport:
@@ -281,6 +286,117 @@ def test_the_smoke_token_can_only_read_as_the_smoke_owner(clean_engine: Engine) 
     assert wrong.status_code == 401
 
 
+def bearer_client(engine: Engine) -> TestClient:
+    """An API with the smoke and e2e tokens configured and no browser session."""
+    return anonymous(
+        api_with(
+            engine,
+            httpx.MockTransport(recorded_response),
+            "t",
+            smoke_token_sha256=hashlib.sha256(SMOKE_TOKEN.encode()).hexdigest(),
+            e2e_token_sha256=hashlib.sha256(E2E_TOKEN.encode()).hexdigest(),
+            runs_per_day=1000,
+        )
+    )
+
+
+def test_the_e2e_token_may_write_as_the_e2e_owner_from_the_staged_page(
+    clean_engine: Engine,
+) -> None:
+    api = bearer_client(clean_engine)
+    staged = {"Authorization": f"Bearer {E2E_TOKEN}", "Origin": STAGED_ORIGIN}
+    me = api.get("/api/auth/me", headers=staged)
+    assert me.status_code == 200
+    assert me.json()["owner_id"] == "e2e"
+    search = api.post(
+        "/api/places/search", json={"query": "avenue south residence"}, headers=staged
+    )
+    assert search.status_code == 200
+    as_smoke = {"Authorization": f"Bearer {SMOKE_TOKEN}", "Origin": STAGED_ORIGIN}
+    assert api.get("/api/auth/me", headers=as_smoke).json()["owner_id"] == "smoke"
+    refused = api.post("/api/places/search", json={"query": "x"}, headers=as_smoke)
+    assert refused.json()["error"]["code"] == "read_only"
+
+
+def test_a_cookie_session_from_another_origin_is_still_refused_with_bearer_owners_configured(
+    clean_engine: Engine,
+) -> None:
+    api = bearer_client(clean_engine)
+    cookie = as_owner(api, f"github:{TOM_GITHUB_ID}")
+    for origin in [STAGED_ORIGIN, "https://evil.example"]:
+        write = api.post(
+            "/api/places/search",
+            json={"query": "x"},
+            headers={**cookie, "Origin": origin, "Authorization": "Bearer guessed"},
+        )
+        assert write.status_code == 403
+        assert write.json()["error"]["code"] == "csrf_failed"
+    no_csrf = api.post(
+        "/api/places/search", json={"query": "x"}, headers={"Cookie": cookie["Cookie"]}
+    )
+    assert no_csrf.json()["error"]["code"] == "csrf_failed"
+
+
+def test_a_cookie_session_cannot_pose_as_the_e2e_owner(clean_engine: Engine) -> None:
+    api = bearer_client(clean_engine)
+    me = api.get("/api/auth/me", headers=as_owner(api, "e2e"))
+    assert me.status_code == 401
+
+
+def test_the_e2e_owner_may_start_one_run_every_10_minutes_and_3_a_day(
+    clean_engine: Engine,
+) -> None:
+    api = bearer_client(clean_engine)
+    bearer = {"Authorization": f"Bearer {E2E_TOKEN}"}
+    start = {
+        "activity": "running",
+        "start": {
+            "kind": "map",
+            "point": {"type": "Point", "coordinates": [103.8291052120283, 1.276629534107344]},
+        },
+    }
+    request_id = api.post("/api/route-requests", json=start, headers=bearer).json()["id"]
+
+    def start_run() -> httpx.Response:
+        body = {"operation_id": str(uuid.uuid4()), "distance": {"kind": "target", "target_km": 5}}
+        response: httpx.Response = api.post(
+            f"/api/route-requests/{request_id}/runs", json=body, headers=bearer
+        )
+        return response
+
+    def age_runs_by(minutes: int) -> None:
+        with Session(clean_engine) as session:
+            session.execute(
+                update(GenerationRunRecord).values(
+                    started_at=GenerationRunRecord.started_at - timedelta(minutes=minutes)
+                )
+            )
+            session.commit()
+
+    assert start_run().status_code == 201
+    too_soon = start_run()
+    assert too_soon.status_code == 429
+    assert too_soon.json()["error"] == {
+        "code": "run_limit_reached",
+        "message": "The e2e owner may start one run every 10 minutes",
+    }
+    age_runs_by(9)
+    assert start_run().status_code == 429
+    age_runs_by(1)
+    assert start_run().status_code == 201
+    age_runs_by(10)
+    assert start_run().status_code == 201
+    age_runs_by(10)
+    over_the_day = start_run()
+    assert over_the_day.status_code == 429
+    assert over_the_day.json()["error"]["message"] == "At most 3 runs a day; try tomorrow"
+    other = as_owner(api, f"github:{TOM_GITHUB_ID}")
+    tom_body = {"operation_id": str(uuid.uuid4()), "distance": {"kind": "target", "target_km": 5}}
+    tom_request = api.post("/api/route-requests", json=start, headers=other).json()["id"]
+    tom_run = api.post(f"/api/route-requests/{tom_request}/runs", json=tom_body, headers=other)
+    assert tom_run.status_code == 201
+
+
 def test_health_and_readiness_need_no_session(clean_engine: Engine) -> None:
     api = anonymous(client_for(clean_engine))
     assert api.get("/api/health").json() == {"status": "ok"}
@@ -295,3 +411,17 @@ def test_readiness_fails_when_a_provider_is_not_configured(clean_engine: Engine)
     assert ready.status_code == 503
     assert ready.json()["status"] == "not_ready"
     assert ready.json()["missing"] == ["ONEMAP_API_TOKEN"]
+
+
+def test_checking_the_run_budget_holds_the_owner_until_the_run_is_saved(
+    clean_engine: Engine,
+) -> None:
+    auth = auth_from_env(clean_engine)
+    lock = text("SELECT pg_try_advisory_xact_lock(hashtext(:owner))")
+    with Session(clean_engine) as checking, Session(clean_engine) as concurrent:
+        auth.check_run_budget(checking, "e2e")
+        assert concurrent.scalar(lock, {"owner": "e2e"}) is False
+        assert concurrent.scalar(lock, {"owner": "github:1"}) is True
+        concurrent.rollback()
+        checking.commit()
+        assert concurrent.scalar(lock, {"owner": "e2e"}) is True

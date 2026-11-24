@@ -269,6 +269,7 @@ def test_the_environment_configures_sign_in_and_limits(
     monkeypatch.setenv("GITHUB_CLIENT_SECRET", "client-secret")
     monkeypatch.setenv("OWNER_GITHUB_IDS", "7, 8,")
     monkeypatch.setenv("SMOKE_TOKEN_SHA256", "abc123")
+    monkeypatch.setenv("E2E_TOKEN_SHA256", "def456")
     monkeypatch.setenv("REQUESTS_PER_MINUTE", "5")
     monkeypatch.setenv("RUNS_PER_DAY", "3")
 
@@ -283,6 +284,7 @@ def test_the_environment_configures_sign_in_and_limits(
     assert configured.github.callback_url == "https://routes.example/api/auth/callback"
     assert configured.github.authorize_url == AUTHORIZE_URL
     assert configured.smoke_token_sha256 == "abc123"
+    assert configured.e2e_token_sha256 == "def456"
     assert configured.limit.per_minute == 5
     assert configured.runs_per_day == 3
 
@@ -296,6 +298,7 @@ def test_without_configuration_only_tom_may_sign_in_locally(
         "GITHUB_CLIENT_SECRET",
         "OWNER_GITHUB_IDS",
         "SMOKE_TOKEN_SHA256",
+        "E2E_TOKEN_SHA256",
         "REQUESTS_PER_MINUTE",
         "RUNS_PER_DAY",
     ]:
@@ -309,6 +312,7 @@ def test_without_configuration_only_tom_may_sign_in_locally(
     assert configured.github.client_secret is None
     assert configured.github.callback_url == "http://127.0.0.1:3000/api/auth/callback"
     assert configured.smoke_token_sha256 is None
+    assert configured.e2e_token_sha256 is None
     assert configured.limit.per_minute == 60
     assert configured.runs_per_day == 30
 

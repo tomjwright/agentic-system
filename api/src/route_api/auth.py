@@ -9,8 +9,13 @@ database keeps only its SHA-256, so a database leak gives no usable sessions. Re
 change something must also send the session's CSRF token in X-CSRF-Token, and a browser
 Origin other than the page's own is refused.
 
-The deploy smoke test signs in with a bearer token whose SHA-256 is SMOKE_TOKEN_SHA256. It
-acts as its own owner, "smoke", and may only read.
+Two bearer tokens are for the deploy workflow, never for people. The smoke test's token
+(SHA-256 in SMOKE_TOKEN_SHA256) acts as owner "smoke" and may only read. The staged browser
+test's token (SHA-256 in E2E_TOKEN_SHA256) acts as owner "e2e" and may write, but starts at
+most one run every 10 minutes and 3 a day (retention.py deletes its data after a day). A
+browser never attaches a bearer token by itself, so a request carrying one cannot be forged by
+another site: bearer requests skip the Origin and CSRF checks, which lets the staged page,
+on its own one-off origin, use the API. Cookie sessions keep both checks.
 """
 
 import base64
@@ -37,6 +42,9 @@ LOGIN_COOKIE = "__Host-route-login"
 SESSION_DAYS = 7
 LOGIN_SECONDS = 600
 SMOKE_OWNER = "smoke"
+E2E_OWNER = "e2e"
+E2E_RUNS_PER_DAY = 3
+E2E_RUN_GAP = timedelta(minutes=10)
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
@@ -182,6 +190,7 @@ class Auth:
         github: GitHubOAuth,
         app_origin: str,
         smoke_token_sha256: str | None = None,
+        e2e_token_sha256: str | None = None,
         requests_per_minute: int = 60,
         runs_per_day: int = 30,
     ):
@@ -189,41 +198,55 @@ class Auth:
         self.github = github
         self.app_origin = app_origin
         self.smoke_token_sha256 = smoke_token_sha256
+        self.e2e_token_sha256 = e2e_token_sha256
         self.limit = RequestLimit(requests_per_minute)
         self.runs_per_day = runs_per_day
 
     def owner(self, request: Request) -> tuple[str, str]:
         """The (owner id, CSRF token) of a signed-in request."""
-        origin = request.headers.get("Origin")
-        if origin is not None and origin != self.app_origin:
-            raise AuthError(403, "csrf_failed", "Requests must come from the app's own page")
-        owner_id, csrf = self.signed_in(request)
-        if request.method not in SAFE_METHODS:
-            if owner_id == SMOKE_OWNER:
-                raise AuthError(403, "read_only", "The smoke test may only read")
-            sent = request.headers.get("X-CSRF-Token", "")
-            if not secrets.compare_digest(sent.encode(), csrf.encode()):
-                raise AuthError(403, "csrf_failed", "Missing or wrong CSRF token")
+        owner_id = self.bearer_owner(request)
+        csrf = ""
+        if owner_id is None:
+            owner_id, csrf = self.browser_owner(request)
+        elif owner_id == SMOKE_OWNER and request.method not in SAFE_METHODS:
+            raise AuthError(403, "read_only", "The smoke test may only read")
         self.limit.check(owner_id)
         return owner_id, csrf
 
-    def signed_in(self, request: Request) -> tuple[str, str]:
+    def bearer_owner(self, request: Request) -> str | None:
+        """The deploy workflow's owner whose token the request carries, if any."""
         bearer = request.headers.get("Authorization", "")
-        if self.smoke_token_sha256 and bearer.startswith("Bearer "):
-            sent = hashed(bearer.removeprefix("Bearer "))
-            if secrets.compare_digest(sent, self.smoke_token_sha256):
-                return SMOKE_OWNER, ""
+        if not bearer.startswith("Bearer "):
+            return None
+        sent = hashed(bearer.removeprefix("Bearer "))
+        if self.smoke_token_sha256 and secrets.compare_digest(sent, self.smoke_token_sha256):
+            return SMOKE_OWNER
+        if self.e2e_token_sha256 and secrets.compare_digest(sent, self.e2e_token_sha256):
+            return E2E_OWNER
+        return None
+
+    def browser_owner(self, request: Request) -> tuple[str, str]:
+        """The owner of the session cookie, after the Origin and CSRF checks."""
+        origin = request.headers.get("Origin")
+        if origin is not None and origin != self.app_origin:
+            raise AuthError(403, "csrf_failed", "Requests must come from the app's own page")
         token = request.cookies.get(SESSION_COOKIE)
-        if token:
-            with Session(self.engine) as session:
-                record = session.get(OwnerSessionRecord, hashed(token))
-                if (
-                    record is not None
-                    and record.expires_at > datetime.now(UTC)
-                    and self.allowed(record.owner_id)
-                ):
-                    return record.owner_id, record.csrf_token
-        raise AuthError(401, "not_signed_in", "Sign in first")
+        if not token:
+            raise AuthError(401, "not_signed_in", "Sign in first")
+        with Session(self.engine) as session:
+            record = session.get(OwnerSessionRecord, hashed(token))
+            if (
+                record is None
+                or record.expires_at <= datetime.now(UTC)
+                or not self.allowed(record.owner_id)
+            ):
+                raise AuthError(401, "not_signed_in", "Sign in first")
+            owner_id, csrf = record.owner_id, record.csrf_token
+        if request.method not in SAFE_METHODS:
+            sent = request.headers.get("X-CSRF-Token", "")
+            if not secrets.compare_digest(sent.encode(), csrf.encode()):
+                raise AuthError(403, "csrf_failed", "Missing or wrong CSRF token")
+        return owner_id, csrf
 
     def allowed(self, owner_id: str) -> bool:
         """Checked on every request, so an owner taken off OWNER_GITHUB_IDS is signed out on
@@ -232,24 +255,37 @@ class Auth:
         return owner_id in allowed_owners
 
     def check_run_budget(self, session: Session, owner_id: str) -> None:
-        """Refuse a new run once the owner started runs_per_day in the last 24 hours."""
-        since = datetime.now(UTC) - timedelta(days=1)
+        """Refuse a new run once the owner started their daily runs in the last 24 hours,
+        and an e2e run within 10 minutes of the last one. Holds a lock on the owner until the
+        session's transaction ends, so concurrent requests cannot both pass the same check."""
+        session.execute(select(func.pg_advisory_xact_lock(func.hashtext(owner_id))))
+        now = datetime.now(UTC)
+        runs_per_day = self.runs_per_day
+        if owner_id == E2E_OWNER:
+            runs_per_day = E2E_RUNS_PER_DAY
+            if self.runs_started_since(session, owner_id, now - E2E_RUN_GAP) > 0:
+                raise AuthError(
+                    429, "run_limit_reached", "The e2e owner may start one run every 10 minutes"
+                )
+        if self.runs_started_since(session, owner_id, now - timedelta(days=1)) >= runs_per_day:
+            raise AuthError(
+                429, "run_limit_reached", f"At most {runs_per_day} runs a day; try tomorrow"
+            )
+
+    def runs_started_since(self, session: Session, owner_id: str, since: datetime) -> int:
         started = session.scalar(
             select(func.count())
             .select_from(GenerationRunRecord)
             .where(GenerationRunRecord.owner_id == owner_id)
             .where(GenerationRunRecord.started_at > since)
         )
-        if (started or 0) >= self.runs_per_day:
-            raise AuthError(
-                429, "run_limit_reached", f"At most {self.runs_per_day} runs a day; try tomorrow"
-            )
+        return started or 0
 
 
 def auth_from_env(engine: Engine) -> Auth:
     """Reads APP_ORIGIN, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, OWNER_GITHUB_IDS (comma
-    separated numeric ids, Tom's by default), SMOKE_TOKEN_SHA256, REQUESTS_PER_MINUTE and
-    RUNS_PER_DAY."""
+    separated numeric ids, Tom's by default), SMOKE_TOKEN_SHA256, E2E_TOKEN_SHA256,
+    REQUESTS_PER_MINUTE and RUNS_PER_DAY."""
     app_origin = os.environ.get("APP_ORIGIN", "http://127.0.0.1:3000")
     allowed_ids = set()
     for part in os.environ.get("OWNER_GITHUB_IDS", "119127762").split(","):
@@ -268,6 +304,7 @@ def auth_from_env(engine: Engine) -> Auth:
         github,
         app_origin=app_origin,
         smoke_token_sha256=os.environ.get("SMOKE_TOKEN_SHA256") or None,
+        e2e_token_sha256=os.environ.get("E2E_TOKEN_SHA256") or None,
         requests_per_minute=int(os.environ.get("REQUESTS_PER_MINUTE", "60")),
         runs_per_day=int(os.environ.get("RUNS_PER_DAY", "30")),
     )

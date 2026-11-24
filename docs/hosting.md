@@ -6,10 +6,10 @@ given payment details. Limits below were read from the official pages on 2026-11
 | Part | Provider (free tier) | What it runs |
 | --- | --- | --- |
 | Page | Vercel Hobby | `web/` (Next.js). `/api/*` is rewritten to the API, so the browser only sees one origin. |
-| API | Render free web service (Docker) | `api/Dockerfile`: migrations, retention purge, then uvicorn. |
+| API | Render free web service (native Python) | `render.yaml`: migrations, then uvicorn; the app purges expired records on start. |
 | Database | Neon free Postgres | Direct (non-pooled) connection string. |
 | Sign-in | GitHub OAuth app | Only allowlisted numeric GitHub user ids get a session. |
-| Telemetry | Grafana Cloud free (OTLP) | Traces and logs over OTLP/HTTP, alert rules in `ops/grafana/`. |
+| Telemetry | Grafana Cloud free (OTLP) | Traces over OTLP/HTTP; alert rules in `ops/grafana/alerts.yaml`. |
 
 ## Free-tier limits that shape the design
 
@@ -96,10 +96,110 @@ given payment details. Limits below were read from the official pages on 2026-11
 Vercel cuts any proxied request at 120 s and a cold Render instance takes about 60 s to
 wake. So:
 
-- Generation stops starting new HeiGIT requests once 90 s have passed (see
-  `api/src/route_api/generation.py`), so a run returns inside the 120 s rewrite limit.
-- The page checks `/api/health` on load, so the API is awake before the owner reaches
-  Generate (search and confirm already need it).
+- Generation starts no new HeiGIT request once 45 s have passed (`TIME_BUDGET_S` in
+  `api/src/route_api/generation.py`). One request can take at most 30 s, plus one retry
+  of 30 s, a 1 s retry wait and the 2 s gap, so a run answers in about 108 s at worst.
+- The page calls `/api/auth/me` on load and search and confirm come first, so the API is
+  awake before Generate is pressed.
 
 If either limit changes so a bounded run cannot fit, generation must move to a background
 job with polling; that is a design change to raise, not a reason to pay for hosting.
+
+## Sign-in and request limits
+
+- `/api/auth/login` sends the browser to GitHub with `state` and a PKCE challenge, both kept
+  in a 10-minute `__Host-route-login` cookie. `/api/auth/callback` exchanges the code, reads
+  `/user` and gives a session only to an id in `OWNER_GITHUB_IDS`. The allowlist is checked
+  again on every request, so removing an id signs that owner out everywhere.
+- The session is a random token in `__Host-route-session` (HttpOnly, Secure, SameSite=Lax,
+  7 days). Only its SHA-256 is stored. POSTs must send `X-CSRF-Token`, and a cookie request
+  whose `Origin` is not `APP_ORIGIN` is refused. No CORS headers are sent.
+- Every route, run and export query filters by the signed-in owner; another owner's id
+  answers 404.
+- Limits per owner: request bodies of at most 8 KiB, `REQUESTS_PER_MINUTE` (60),
+  `RUNS_PER_DAY` (30, at most 150 HeiGIT requests a day, inside HeiGIT's free 2,000 a day).
+- Two bearer tokens belong to the deploy workflow, not to people. A browser never attaches
+  a bearer token by itself, so these requests skip the Origin and CSRF checks:
+  - `SMOKE_TOKEN` (SHA-256 in `SMOKE_TOKEN_SHA256`) is owner `smoke` and may only read.
+  - `E2E_TOKEN` (SHA-256 in `E2E_TOKEN_SHA256`) is owner `e2e` and may write, so the staged
+    browser test can run the whole flow from the staged page's one-off origin. It may start
+    one run every 10 minutes and 3 a day (at most 15 HeiGIT requests and a few OneMap
+    searches a day), and its route requests are deleted after a day.
+
+## Deploy and recovery
+
+`.github/workflows/deploy.yml` runs `route_api.promote` (tested in `api/tests/test_promote.py`)
+when the `ci` workflow finishes on `main`. The repository is public and a fork's pull request
+also runs `ci` (its branch may even be called `main`), so the job runs only for a passing
+`push` to this repository's `main`, or a manual run on `main`, in the `production`
+environment, and checks out that commit without keeping the token. Each of these conditions
+has a test in `api/tests/test_deploy_workflow.py`.
+
+1. Build the page with `vercel build --prod` (no token in the build's environment) and
+   refuse if a provider key or URL is in `.vercel/output` (`scripts/no_provider_secrets.sh`,
+   the same scan the `vercel-build` CI job runs on every PR).
+2. Stage it with `vercel deploy --prebuilt --prod --skip-domain` (not yet live).
+3. Wait up to 60 minutes for every required check run from GitHub Actions on the commit:
+   `secrets-scan`, `feasibility`, `actionlint`, `zizmor`, `codeql (python)`,
+   `codeql (actions)`, `api`, `web`, `codeql (javascript-typescript)`, `migration-compat`,
+   `mutation-api`, `mutation-feasibility`, `render-smoke`, `vercel-build`. Refuse if any is
+   missing, unfinished or not `success`. Nothing is deployed.
+4. Deploy the API on Render. Its start command runs `python -m route_api.migrate` before
+   uvicorn: `alembic upgrade head`, unless a newer release has already migrated further (a
+   rollback), when it leaves the schema as it is.
+   If migration fails the process exits, Render never routes to it and the old API keeps
+   serving; promotion stops.
+5. Smoke-test the staged page: `/api/ready` is 200, an anonymous `/api/auth/me` is 401, the
+   smoke token signs in, `/` is 200. Then run the staged browser test
+   (`web/playwright.staged.config.ts`) against it as owner `e2e`: search "avenue south
+   residence", confirm it, generate a 5 km loop and check the GPX holds the stored path.
+   This is one OneMap search and at most 5 HeiGIT requests. On failure the API is rolled
+   back to its previous live deploy and the page is never promoted.
+6. Promote the staged page and smoke-test production. On failure both the page (Vercel
+   rollback to the previous production deployment) and the API are rolled back.
+
+Migrations must only add (expand): the old API has to keep working on the new schema while
+it is still serving and after a rollback (`migration-compat` checks this). Removing a column
+takes two releases.
+
+## Checks before anything deploys
+
+Besides the existing jobs, `ci.yml` runs on every PR:
+
+- `render-smoke`: `render.yaml`'s build and start commands, exactly as written
+  (`scripts/render_smoke.sh`), against PostgreSQL 17, failing unless `/api/ready` answers.
+- `vercel-build`: `vercel build` with `web/vercel.json`, then the deploy's provider scan.
+- `mutation-api` also mutates `promote.py` and `retention.py`, at the 94% floor.
+- `web` also runs the staged browser test against the recorded API from an origin the API
+  does not trust, as the staged page is.
+
+## Retention
+
+- A route request holds the confirmed start location. It and everything under it
+  (revisions, runs, candidate geometry, the selection) are deleted 90 days after it was
+  created, and the `e2e` owner's after a day (`api/src/route_api/retention.py`, run on
+  every API start; Render Free restarts after each idle spell).
+- Expired sessions are deleted the same way. Searches are never stored.
+- Logs and spans hold no queries, coordinates or credentials; Grafana keeps them 14 days.
+
+## Telemetry and alerts
+
+With `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` set the API exports
+spans (`generate_route` with `route.error_code`, `heigit.directions` with the HTTP status).
+`ops/grafana/alerts.yaml` holds three rules: outage (a Grafana Synthetic Monitoring HTTP
+check named `route-api-health` on `/api/health` failing for 10 minutes), generation errors
+and HeiGIT quota. They are not yet imported or tried against a real stack.
+
+## GitHub settings (Tom, as repository admin)
+
+The agent token has no admin rights, so nothing here is applied by an agent. The
+`production` environment with its main-only branch policy already exists. Before
+`deploy.yml` reaches `main`:
+
+- Add `render-smoke` and `vercel-build` to the required checks on `main`, so a PR cannot
+  merge with them failing (the deploy already refuses without them).
+- Environment `production` secrets: `VERCEL_TOKEN`, `RENDER_API_KEY`,
+  `VERCEL_AUTOMATION_BYPASS_SECRET`, `SMOKE_TOKEN`, `E2E_TOKEN`. Variables:
+  `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `RENDER_SERVICE_ID`, `PRODUCTION_URL`.
+- On Render, set `SMOKE_TOKEN_SHA256` and `E2E_TOKEN_SHA256` to the SHA-256 (hex) of the
+  two tokens.

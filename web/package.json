@@ -7,7 +7,8 @@
     "start": "next start",
     "lint": "eslint . && tsc --noEmit",
     "types": "openapi-typescript openapi.json -o src/api-types.ts",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "e2e:staged": "playwright test --config playwright.staged.config.ts"
   },
   "dependencies": {
     "leaflet": "1.9.4",

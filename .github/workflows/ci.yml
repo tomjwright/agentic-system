@@ -117,8 +117,9 @@ jobs:
         run: uv run mutmut results --all true | python3 ../scripts/mutation_floor.py 94
 
   mutation-api:
-    # The same for sign-in (auth.py) and the cycling restriction rules (restrictions.py). Each
-    # mutant's tests get their own database (tests/conftest.py).
+    # The same for sign-in (auth.py), the cycling restriction rules (restrictions.py) and the
+    # deploy gate (promote.py, retention.py). Each mutant's tests get their own database
+    # (tests/conftest.py).
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
@@ -140,7 +141,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
       - run: uv sync --locked
-      - name: Mutate route_api/auth.py and route_api/restrictions.py and run the tests on each mutant
+      - name: Mutate sign-in, restriction and deploy-gate code and run the tests on each mutant
         run: uv run mutmut run --max-children 4
       - name: Fail below 94% killed
         run: uv run mutmut results --all true | python3 ../scripts/mutation_floor.py 94
@@ -182,6 +183,8 @@ jobs:
         env:
           HEIGIT_API_KEY: synthetic-heigit-key-must-not-ship
         run: npm run e2e
+      - name: The deploy's staged browser test, against the recorded API from an origin it does not trust
+        run: npm run e2e:staged
       - name: No OneMap or HeiGIT call, token or key in the browser bundle
         run: |
           if grep -rl -e "onemap.gov.sg/api" -e "ONEMAP_API_TOKEN" .next/static; then exit 1; fi
@@ -193,6 +196,72 @@ jobs:
         with:
           name: playwright-report
           path: web/test-results/
+
+  render-smoke:
+    # render.yaml's build and start commands, exactly as written, on a fresh runner and
+    # PostgreSQL 17 (scripts/render_smoke.sh). Fails unless /api/ready answers 200. Provider
+    # settings are synthetic: readiness only checks they are set, and nothing calls a provider.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: routes_render
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/routes_render
+      APP_ORIGIN: https://app.example.invalid
+      OWNER_GITHUB_IDS: "119127762"
+      GITHUB_CLIENT_ID: synthetic-client
+      GITHUB_CLIENT_SECRET: synthetic-github-secret-must-not-ship
+      ONEMAP_API_TOKEN: synthetic-onemap-token-must-not-ship
+      HEIGIT_API_KEY: synthetic-heigit-key-must-not-ship
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: The Python render.yaml asks Render for
+        id: python
+        run: echo "version=$(yq -e '.services[0].envVars[] | select(.key == "PYTHON_VERSION") | .value' render.yaml)" >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+        with:
+          enable-cache: false
+      - name: Put that exact Python, with pip, on PATH (setup-python lacks some patches)
+        env:
+          PYTHON_VERSION: ${{ steps.python.outputs.version }}
+        run: |
+          uv venv --seed --python "$PYTHON_VERSION" "$RUNNER_TEMP/render-python"
+          echo "$RUNNER_TEMP/render-python/bin" >> "$GITHUB_PATH"
+      - run: scripts/render_smoke.sh
+
+  vercel-build:
+    # Builds the page as Vercel does (vercel build, web/vercel.json, root directory web) with
+    # synthetic provider settings in the environment, then scans the output with the deploy
+    # workflow's own list (scripts/no_provider_secrets.sh). Needs no Vercel token.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      API_URL: https://api.example.invalid
+      ONEMAP_API_TOKEN: synthetic-onemap-token-must-not-ship
+      HEIGIT_API_KEY: synthetic-heigit-key-must-not-ship
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - name: Install the Vercel CLI that ops/vercel-cli/package-lock.json pins
+        run: npm ci --prefix ops/vercel-cli
+      - name: The project settings vercel pull would write (framework Next.js, root directory web)
+        run: |
+          mkdir -p .vercel
+          echo '{"projectId": "ci", "orgId": "ci", "settings": {"framework": "nextjs", "rootDirectory": "web"}}' > .vercel/project.json
+      - run: ops/vercel-cli/node_modules/.bin/vercel build --prod --yes
+      - run: scripts/no_provider_secrets.sh .vercel/output
 
   secrets-scan:
     # Scans the whole git history on every run, so no commit range (merge pushes, long PRs) is skipped.

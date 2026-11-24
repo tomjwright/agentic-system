@@ -59,8 +59,10 @@ from route_api.geography import on_singapore_land
 from route_api.gpx import route_to_gpx
 from route_api.heigit import Heigit
 from route_api.logs import configure_logging, log_event
+from route_api.migrate import known_revisions
 from route_api.onemap import OneMap, ProviderError
 from route_api.restrictions import RestrictedWays, load_restricted_ways
+from route_api.retention import purge_expired
 from route_api.route_selection import DISTANCE_LIMITS_KM, distance_bounds, outside_activity_limits
 from route_api.runs import (
     find_operation,
@@ -165,6 +167,7 @@ def create_app(
     )
     app.state.engine = engine
     head = migration_head()
+    revisions = known_revisions()
 
     def current_owner(request: Request) -> str:
         owner_id, _ = auth.owner(request)
@@ -238,12 +241,17 @@ def create_app(
         try:
             with engine.connect() as connection:
                 applied = connection.execute(text("SELECT version_num FROM alembic_version"))
-                if applied.scalar() == head:
+                revision = applied.scalar()
+                if revision == head:
                     migrations = "current"
+                elif revision is not None and revision not in revisions:
+                    # A newer release migrated further and this one is serving again after a
+                    # rollback; migrations only add, so this release still works on it.
+                    migrations = "ahead"
         except Exception:  # any database failure means not ready
             database = "unavailable"
         body: dict[str, Any] = {"status": "ready", "database": database, "migrations": migrations}
-        if missing or database != "ok" or migrations != "current":
+        if missing or database != "ok" or migrations == "behind":
             body["status"] = "not_ready"
             body["missing"] = missing
             return JSONResponse(body, status_code=503)
@@ -461,6 +469,7 @@ def create_app(
                 generation = generate(heigit, activity, start, bounds, restricted_ways)
                 span.set_attribute("route.activity", activity)
                 span.set_attribute("route.attempts", len(generation.attempts))
+                span.set_attribute("route.error_code", generation.error_code or "none")
             with tracer.start_as_current_span("db.save_generation"):
                 save_generation(session, run, generation)
                 session.commit()
@@ -553,6 +562,7 @@ def app_from_env() -> FastAPI:
     heigit = Heigit(httpx.Client(), api_key=os.environ.get("HEIGIT_API_KEY"))
     # Neon suspends idle computes; pre-ping replaces connections it closed.
     engine = create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
+    purge_expired(engine, datetime.now(UTC))
     return create_app(
         onemap, engine, auth_from_env(engine), heigit=heigit, restricted_ways=load_restricted_ways()
     )

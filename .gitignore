@@ -12,3 +12,7 @@ feasibility/data/
 
 # mutmut working copies
 mutants/
+
+# Vercel CLI project settings and build output
+.vercel/
+node_modules/
