@@ -318,11 +318,7 @@ def fallback_message(clarification: Clarification | None, facts: RouteFacts | No
     if facts.outcome == "provider_error":
         return f"No route could be made: {facts.error_code}."
     name = ACTIVITY_NAMES[facts.activity]
-    requested = facts.requested
-    if isinstance(requested, DistanceTarget):
-        asked = f"{requested.target_km:g} km"
-    else:
-        asked = f"{requested.min_km:g}-{requested.max_km:g} km"
+    asked = distance_text(facts.requested)
     if facts.outcome == "no_route":
         sentences = [f"No acceptable {asked} {name} loop was found in {facts.tries} tries."]
     else:
