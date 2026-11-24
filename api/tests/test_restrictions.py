@@ -3,9 +3,19 @@
 Coordinates are real OSM node positions near Avenue South Residence, as HeiGIT returns them.
 """
 
-import pytest
+import gzip
+import json
+from pathlib import Path
 
-from route_api.restrictions import RestrictedWays, check_route, load_restricted_ways
+import pytest
+from route_feasibility.restrictions import RestrictedWay
+
+from route_api.restrictions import (
+    RestrictedWays,
+    check_route,
+    cycling_restriction_kind,
+    load_restricted_ways,
+)
 
 # Central Expressway (CTE), OSM way 45071007: its first four nodes.
 CTE = [
@@ -94,3 +104,81 @@ def test_riding_through_a_minor_road_tunnel_is_legal_but_disclosed(ways: Restric
 
 def test_a_car_park_ramp_is_not_a_road_tunnel(ways: RestrictedWays) -> None:
     assert check_route(CAR_PARK_RAMP, ["", "", ""], ways) == []
+
+
+@pytest.mark.parametrize(
+    ("tags", "kind"),
+    [
+        ({"highway": "tertiary", "tunnel": "yes"}, "minor road tunnel"),
+        ({"highway": "residential", "tunnel": "yes"}, "minor road tunnel"),
+        ({"highway": "secondary_link", "tunnel": "yes"}, "minor road tunnel"),
+        ({"highway": "primary", "tunnel": "yes"}, "road tunnel"),
+        ({"highway": "motorway", "tunnel": "yes"}, "expressway"),
+        ({"highway": "tertiary"}, None),
+        ({"highway": "tertiary", "tunnel": "no"}, None),
+        ({"highway": "service", "tunnel": "yes"}, None),
+        ({"tunnel": "yes"}, None),
+    ],
+)
+def test_minor_road_tunnels_are_added_to_the_feasibility_kinds(
+    tags: dict[str, str], kind: str | None
+) -> None:
+    assert cycling_restriction_kind(tags) == kind
+
+
+def test_loading_names_each_way_by_name_then_ref_and_skips_unrestricted_ones(
+    tmp_path: Path,
+) -> None:
+    line = [[103.8, 1.3], [103.801, 1.3]]
+    features = [
+        ({"osm_way_id": 1, "highway": "service", "tunnel": "yes", "name": "Ramp"}, line),
+        ({"osm_way_id": 2, "highway": "motorway", "name": "Ayer Rajah", "ref": "AYE"}, line),
+        ({"osm_way_id": 3, "highway": "trunk", "ref": "R1"}, line),
+        ({"osm_way_id": 4, "highway": "tertiary", "tunnel": "yes"}, line),
+    ]
+    geojson = {
+        "source": {"extract": "test.osm.pbf", "osm_timestamp": "2026-01-02", "licence": "ODbL"},
+        "features": [
+            {"properties": tags, "geometry": {"coordinates": coordinates}}
+            for tags, coordinates in features
+        ],
+    }
+    path = tmp_path / "ways.geojson.gz"
+    with gzip.open(path, "wt", encoding="utf-8") as file:
+        json.dump(geojson, file)
+
+    loaded = load_restricted_ways(path)
+
+    assert loaded.source == "OpenStreetMap extract test.osm.pbf of 2026-01-02 (ODbL)"
+    assert [(way.osm_way_id, way.kind, way.name, way.line) for way in loaded.ways] == [
+        (2, "expressway", "Ayer Rajah", line),
+        (3, "major arterial (trunk)", "R1", line),
+        (4, "minor road tunnel", "unnamed", line),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("kind", "outcome"),
+    [("expressway", "on_prohibited_road"), ("major arterial (trunk)", "on_disclosed_road")],
+)
+def test_even_under_a_metre_along_a_restricted_road_counts_as_on_it(
+    kind: str, outcome: str
+) -> None:
+    road = RestrictedWay(osm_way_id=1, kind=kind, name="AYE", line=[[103.8, 1.3], [103.801, 1.3]])
+    ways = RestrictedWays(source="test", ways=[road])
+
+    [contact] = check_route([(103.8, 1.3), (103.800005, 1.3)], ["AYE", "AYE"], ways)
+
+    assert contact.on_m == 0.6
+    assert contact.outcome == outcome
+
+
+def test_distances_are_rounded_to_a_tenth_of_a_metre() -> None:
+    road = RestrictedWay(
+        osm_way_id=1, kind="expressway", name="AYE", line=[[103.8, 1.3], [103.801, 1.3]]
+    )
+    ways = RestrictedWays(source="test", ways=[road])
+
+    [contact] = check_route([(103.8, 1.3), (103.8003, 1.3)], ["AYE", "AYE"], ways)
+
+    assert (contact.near_m, contact.on_m) == (33.3, 33.3)
