@@ -144,7 +144,9 @@ has a test in `api/tests/test_deploy_workflow.py`.
    `codeql (actions)`, `api`, `web`, `codeql (javascript-typescript)`, `migration-compat`,
    `mutation-api`, `mutation-feasibility`, `render-smoke`, `vercel-build`. Refuse if any is
    missing, unfinished or not `success`. Nothing is deployed.
-4. Deploy the API on Render. Its start command runs `alembic upgrade head` before uvicorn.
+4. Deploy the API on Render. Its start command runs `python -m route_api.migrate` before
+   uvicorn: `alembic upgrade head`, unless a newer release has already migrated further (a
+   rollback), when it leaves the schema as it is.
    If migration fails the process exits, Render never routes to it and the old API keeps
    serving; promotion stops.
 5. Smoke-test the staged page: `/api/ready` is 200, an anonymous `/api/auth/me` is 401, the

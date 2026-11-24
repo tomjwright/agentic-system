@@ -59,6 +59,7 @@ from route_api.geography import on_singapore_land
 from route_api.gpx import route_to_gpx
 from route_api.heigit import Heigit
 from route_api.logs import configure_logging, log_event
+from route_api.migrate import known_revisions
 from route_api.onemap import OneMap, ProviderError
 from route_api.restrictions import RestrictedWays, load_restricted_ways
 from route_api.retention import purge_expired
@@ -166,6 +167,7 @@ def create_app(
     )
     app.state.engine = engine
     head = migration_head()
+    revisions = known_revisions()
 
     def current_owner(request: Request) -> str:
         owner_id, _ = auth.owner(request)
@@ -239,12 +241,17 @@ def create_app(
         try:
             with engine.connect() as connection:
                 applied = connection.execute(text("SELECT version_num FROM alembic_version"))
-                if applied.scalar() == head:
+                revision = applied.scalar()
+                if revision == head:
                     migrations = "current"
+                elif revision is not None and revision not in revisions:
+                    # A newer release migrated further and this one is serving again after a
+                    # rollback; migrations only add, so this release still works on it.
+                    migrations = "ahead"
         except Exception:  # any database failure means not ready
             database = "unavailable"
         body: dict[str, Any] = {"status": "ready", "database": database, "migrations": migrations}
-        if missing or database != "ok" or migrations != "current":
+        if missing or database != "ok" or migrations == "behind":
             body["status"] = "not_ready"
             body["missing"] = missing
             return JSONResponse(body, status_code=503)
