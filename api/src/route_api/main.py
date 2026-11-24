@@ -462,6 +462,7 @@ def create_app(
                 generation = generate(heigit, activity, start, bounds, restricted_ways)
                 span.set_attribute("route.activity", activity)
                 span.set_attribute("route.attempts", len(generation.attempts))
+                span.set_attribute("route.error_code", generation.error_code or "none")
             with tracer.start_as_current_span("db.save_generation"):
                 save_generation(session, run, generation)
                 session.commit()
