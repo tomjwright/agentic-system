@@ -104,18 +104,46 @@ class Promotion:
         if problem:
             undone = self.roll_back_api(previous_api)
             raise PromotionStopped(f"staged checks failed ({problem}); {undone}")
-        self.vercel("POST", f"/v10/projects/{s.vercel_project_id}/promote/{staged_page}")
-        problem = self.smoke(s.production_url, {})
+        try:
+            self.vercel("POST", f"/v10/projects/{s.vercel_project_id}/promote/{staged_page}")
+        except httpx.HTTPError as error:
+            undone = self.roll_back_api(previous_api)
+            raise PromotionStopped(
+                f"Vercel refused the promotion ({type(error).__name__}); page unchanged, {undone}"
+            ) from error
+        # Smoke-test production only once its domain serves the new page, not the outgoing one.
+        problem = None
+        if not self.production_serves(staged_page):
+            problem = "the production domain did not switch to the staged page in time"
+        if problem is None:
+            problem = self.smoke(s.production_url, {})
         if problem:
-            if previous_page is None:
-                page_undone = "no earlier page to roll back to"
-            else:
-                self.vercel("POST", f"/v1/projects/{s.vercel_project_id}/rollback/{previous_page}")
-                page_undone = "page rolled back"
+            page_undone = self.roll_back_page(previous_page)
             api_undone = self.roll_back_api(previous_api)
             raise PromotionStopped(
                 f"production smoke test failed ({problem}); {page_undone}, {api_undone}"
             )
+
+    def roll_back_page(self, previous_page: str | None) -> str:
+        if previous_page is None:
+            return "no earlier page to roll back to"
+        s = self.settings
+        try:
+            self.vercel("POST", f"/v1/projects/{s.vercel_project_id}/rollback/{previous_page}")
+        except httpx.HTTPError as error:
+            return f"PAGE ROLLBACK FAILED ({type(error).__name__})"
+        if not self.production_serves(previous_page):
+            return "PAGE ROLLBACK FAILED (production still serves the new page)"
+        return "page rolled back"
+
+    def production_serves(self, deployment_id: str) -> bool:
+        waited = 0.0
+        while self.production_deployment() != deployment_id:
+            if waited >= self.settings.deploy_timeout_seconds:
+                return False
+            time.sleep(self.settings.poll_seconds)
+            waited += self.settings.poll_seconds
+        return True
 
     def require_checks(self) -> None:
         s = self.settings
@@ -182,23 +210,42 @@ class Promotion:
     def deploy_api(self) -> None:
         s = self.settings
         deploy = self.render("POST", "/deploys", json={"commitId": s.commit_sha})
-        waited = 0.0
-        while deploy["status"] != "live":
-            if deploy["status"] in RENDER_FAILED:
-                raise PromotionStopped(
-                    f"API deploy ended {deploy['status']}; the previous API keeps serving"
-                )
-            if waited >= s.deploy_timeout_seconds:
-                raise PromotionStopped("API deploy did not go live in time; previous API serving")
-            time.sleep(s.poll_seconds)
-            waited += s.poll_seconds
-            deploy = self.render("GET", f"/deploys/{deploy['id']}")
+        deploy = self.wait_for_render(deploy)
+        if deploy["status"] == "live":
+            return
+        if deploy["status"] in RENDER_FAILED:
+            raise PromotionStopped(
+                f"API deploy ended {deploy['status']}; the previous API keeps serving"
+            )
+        # Left running, Render would put it live later without any staged check.
+        self.render("POST", f"/deploys/{deploy['id']}/cancel")
+        raise PromotionStopped(
+            "API deploy did not go live in time and was canceled; previous API serving"
+        )
 
     def roll_back_api(self, deploy_id: str | None) -> str:
         if deploy_id is None:
             return "no earlier API to roll back to"
-        self.render("POST", "/rollback", json={"deployId": deploy_id})
+        try:
+            deploy = self.render("POST", "/rollback", json={"deployId": deploy_id})
+            deploy = self.wait_for_render(deploy)
+        except httpx.HTTPError as error:
+            return f"API ROLLBACK FAILED ({type(error).__name__}); the new API may still be serving"
+        if deploy["status"] != "live":
+            return f"API ROLLBACK FAILED ({deploy['status']}); the new API may still be serving"
         return "API rolled back"
+
+    def wait_for_render(self, deploy: dict) -> dict:  # type: ignore[type-arg]
+        """Polls a Render deploy until it is live, has failed, or the deadline passes."""
+        s = self.settings
+        waited = 0.0
+        while deploy["status"] != "live" and deploy["status"] not in RENDER_FAILED:
+            if waited >= s.deploy_timeout_seconds:
+                break
+            time.sleep(s.poll_seconds)
+            waited += s.poll_seconds
+            deploy = self.render("GET", f"/deploys/{deploy['id']}")
+        return deploy
 
     def smoke(self, base_url: str, headers: dict[str, str]) -> str | None:
         """Signed-in checks a deploy must pass. Returns the first problem, or None."""
@@ -248,6 +295,8 @@ class Promotion:
         headers = {"authorization": f"Bearer {self.settings.vercel_token}"}
         response = self.http.request(method, f"{VERCEL_API}{path}", headers=headers)
         response.raise_for_status()
+        if not response.content:
+            return {}
         return response.json()  # type: ignore[no-any-return]
 
 

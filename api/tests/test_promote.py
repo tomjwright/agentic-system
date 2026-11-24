@@ -36,6 +36,11 @@ class FakeHosts:
             {"deploy": {"id": "dep-old", "status": "live"}},
         ]
         self.render_statuses = ["build_in_progress", "update_in_progress", "live"]
+        self.rollback_statuses = ["update_in_progress", "live"]
+        self.refused: set[str] = set()
+        # Polls of the production domain that still show the outgoing page after a switch.
+        self.switch_polls = 0
+        self.switching_to: str | None = None
         self.production_page: str | None = "dpl-old"
         self.broken_sites: set[str] = set()
         self.changes: list[str] = []
@@ -78,9 +83,18 @@ class FakeHosts:
             return httpx.Response(
                 200, json={"id": "dep-new", "status": self.render_statuses.pop(0)}
             )
+        if path == "/deploys/dep-new/cancel" and request.method == "POST":
+            self.changes.append("render cancel dep-new")
+            return httpx.Response(200, json={"id": "dep-new", "status": "canceled"})
         if path == "/rollback" and request.method == "POST":
             self.changes.append(f"render rollback {json.loads(request.content)['deployId']}")
+            if "render rollback" in self.refused:
+                return httpx.Response(409, json={"message": "cannot roll back"})
             return httpx.Response(201, json={"id": "dep-rollback", "status": "created"})
+        if path == "/deploys/dep-rollback" and request.method == "GET":
+            return httpx.Response(
+                200, json={"id": "dep-rollback", "status": self.rollback_statuses.pop(0)}
+            )
         raise AssertionError(f"unexpected Render call {request.method} {path}")
 
     def vercel(self, request: httpx.Request, path: str) -> httpx.Response:
@@ -89,14 +103,25 @@ class FakeHosts:
         else:
             assert request.method == "POST"
         if path == "/v13/deployments/routes.vercel.app":
+            if self.switching_to is not None:
+                if self.switch_polls == 0:
+                    self.production_page = self.switching_to
+                    self.switching_to = None
+                else:
+                    self.switch_polls -= 1
             if self.production_page is None:
                 return httpx.Response(404, json={"error": {"code": "not_found"}})
             return httpx.Response(200, json={"id": self.production_page})
         if path == "/v13/deployments/stage-abc.vercel.app":
             return httpx.Response(200, json={"id": "dpl-new"})
         if path.startswith(("/v10/projects/prj/promote/", "/v1/projects/prj/rollback/")):
-            self.changes.append(f"vercel {path.split('/')[4]} {path.split('/')[-1]}")
-            return httpx.Response(201, json={})
+            action, deployment = path.split("/")[4], path.split("/")[-1]
+            self.changes.append(f"vercel {action} {deployment}")
+            if f"vercel {action}" in self.refused:
+                return httpx.Response(403, json={"error": {"code": "forbidden"}})
+            self.switching_to = deployment
+            # Vercel answers both with an empty body, then moves the domain shortly after.
+            return httpx.Response(201)
         raise AssertionError(f"unexpected Vercel call {path}")
 
     def app(self, request: httpx.Request) -> httpx.Response:
@@ -215,11 +240,12 @@ def test_an_api_deploy_that_never_goes_live_stops_promotion(
 ) -> None:
     hosts.render_statuses = ["build_in_progress"] * 10
     with pytest.raises(
-        PromotionStopped, match=r"^API deploy did not go live in time; previous API serving$"
+        PromotionStopped,
+        match=r"^API deploy did not go live in time and was canceled; previous API serving$",
     ):
         promote(hosts)
     assert no_waiting == [1] * 5
-    assert hosts.changes == ["render deploy abc123"]
+    assert hosts.changes == ["render deploy abc123", "render cancel dep-new"]
 
 
 def test_a_failed_staged_smoke_test_rolls_the_api_back(hosts: FakeHosts) -> None:
@@ -406,3 +432,95 @@ def test_main_runs_the_promotion_and_exits_1_when_it_stops(
         assert stopped.value.code == exit_code
     assert capsys.readouterr().out == printed
     assert [client.timeout for client in RecordedPromotion.clients] == [httpx.Timeout(30)]
+
+
+def test_production_is_smoke_tested_only_once_it_serves_the_new_page(
+    hosts: FakeHosts, no_waiting: list[float]
+) -> None:
+    hosts.switch_polls = 2
+    served: list[str | None] = []
+    serving = hosts.app
+
+    def record_page(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "routes.vercel.app":
+            served.append(hosts.production_page)
+        return serving(request)
+
+    hosts.app = record_page  # type: ignore[method-assign]
+    promote(hosts)
+    assert set(served) == {"dpl-new"}
+    assert no_waiting == [1] * (3 + 2)  # three Render polls, then two of the domain
+    assert hosts.changes == ["render deploy abc123", "vercel promote dpl-new"]
+
+
+def test_a_domain_that_never_switches_rolls_both_back(
+    hosts: FakeHosts, no_waiting: list[float]
+) -> None:
+    hosts.switch_polls = 100
+    with pytest.raises(
+        PromotionStopped,
+        match=r"did not switch to the staged page in time\); page rolled back, API rolled back$",
+    ):
+        promote(hosts)
+    assert hosts.changes == [
+        "render deploy abc123",
+        "vercel promote dpl-new",
+        "vercel rollback dpl-old",
+        "render rollback dep-old",
+    ]
+
+
+def test_a_refused_promotion_rolls_the_api_back(hosts: FakeHosts) -> None:
+    hosts.refused.add("vercel promote")
+    with pytest.raises(
+        PromotionStopped,
+        match=r"^Vercel refused the promotion \(HTTPStatusError\); page unchanged, "
+        r"API rolled back$",
+    ):
+        promote(hosts)
+    assert hosts.changes == [
+        "render deploy abc123",
+        "vercel promote dpl-new",
+        "render rollback dep-old",
+    ]
+
+
+def test_a_refused_page_rollback_still_rolls_the_api_back(hosts: FakeHosts) -> None:
+    hosts.broken_sites.add(PRODUCTION)
+    hosts.refused.add("vercel rollback")
+    with pytest.raises(
+        PromotionStopped,
+        match=r"PAGE ROLLBACK FAILED \(HTTPStatusError\), API rolled back$",
+    ):
+        promote(hosts)
+    assert hosts.changes[-1] == "render rollback dep-old"
+
+
+@pytest.mark.parametrize("ending", ["update_failed", "build_failed"])
+def test_a_failed_api_rollback_is_reported(hosts: FakeHosts, ending: str) -> None:
+    hosts.broken_sites.add(STAGED)
+    hosts.rollback_statuses = ["update_in_progress", ending]
+    with pytest.raises(
+        PromotionStopped,
+        match=f"API ROLLBACK FAILED \\({ending}\\); the new API may still be serving$",
+    ):
+        promote(hosts)
+
+
+def test_an_api_rollback_still_running_at_the_deadline_is_reported(
+    hosts: FakeHosts, no_waiting: list[float]
+) -> None:
+    hosts.broken_sites.add(STAGED)
+    hosts.rollback_statuses = ["update_in_progress"] * 10
+    with pytest.raises(PromotionStopped, match=r"API ROLLBACK FAILED \(update_in_progress\)"):
+        promote(hosts)
+
+
+def test_a_refused_api_rollback_is_reported(hosts: FakeHosts) -> None:
+    hosts.broken_sites.add(STAGED)
+    hosts.refused.add("render rollback")
+    with pytest.raises(
+        PromotionStopped,
+        match=r"API ROLLBACK FAILED \(HTTPStatusError\); the new API may still be serving$",
+    ):
+        promote(hosts)
