@@ -145,16 +145,6 @@ def end_session(engine: Engine, token: str) -> None:
         session.commit()
 
 
-def end_sessions_of_removed_owners(engine: Engine, allowed_ids: set[int]) -> None:
-    """Changing OWNER_GITHUB_IDS restarts the API, so a removed owner is signed out here."""
-    allowed_owners = [f"github:{user_id}" for user_id in allowed_ids]
-    with Session(engine) as session:
-        session.execute(
-            delete(OwnerSessionRecord).where(OwnerSessionRecord.owner_id.not_in(allowed_owners))
-        )
-        session.commit()
-
-
 class RequestLimit:
     """At most `per_minute` requests per owner in any 60 seconds (one API instance)."""
 
@@ -216,9 +206,19 @@ class Auth:
         if token:
             with Session(self.engine) as session:
                 record = session.get(OwnerSessionRecord, hashed(token))
-                if record is not None and record.expires_at > datetime.now(UTC):
+                if (
+                    record is not None
+                    and record.expires_at > datetime.now(UTC)
+                    and self.allowed(record.owner_id)
+                ):
                     return record.owner_id, record.csrf_token
         raise AuthError(401, "not_signed_in", "Sign in first")
+
+    def allowed(self, owner_id: str) -> bool:
+        """Checked on every request, so an owner taken off OWNER_GITHUB_IDS is signed out on
+        every instance, including an old one still serving during a deploy."""
+        allowed_owners = [f"github:{user_id}" for user_id in self.github.allowed_ids]
+        return owner_id in allowed_owners
 
     def check_run_budget(self, session: Session, owner_id: str) -> None:
         """Refuse a new run once the owner started runs_per_day in the last 24 hours."""
@@ -244,7 +244,6 @@ def auth_from_env(engine: Engine) -> Auth:
     for part in os.environ.get("OWNER_GITHUB_IDS", "119127762").split(","):
         if part.strip():
             allowed_ids.add(int(part))
-    end_sessions_of_removed_owners(engine, allowed_ids)
     github = GitHubOAuth(
         httpx.Client(),
         client_id=os.environ.get("GITHUB_CLIENT_ID"),

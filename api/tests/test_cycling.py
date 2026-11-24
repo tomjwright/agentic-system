@@ -13,7 +13,7 @@ import httpx
 import pytest
 from sqlalchemy import Engine, text
 
-from tests.conftest import as_owner
+from tests.conftest import TOM, as_owner
 from tests.recorded_heigit import FIXTURES, recorded_response
 from tests.test_restrictions import CTE, OVER_CTE
 from tests.test_runs import (
@@ -40,9 +40,7 @@ def cycling_run(engine: Engine, handler: Any, distance: dict[str, Any]) -> dict[
 
 def selected_route(engine: Engine, run_id: str) -> dict[str, Any]:
     api = api_with_heigit(engine, recorded_response)
-    route: dict[str, Any] = api.get(
-        f"/api/runs/{run_id}/route", headers=as_owner(api, "tom")
-    ).json()
+    route: dict[str, Any] = api.get(f"/api/runs/{run_id}/route", headers=as_owner(api, TOM)).json()
     return route
 
 
@@ -258,8 +256,8 @@ def test_gpx_export_is_exactly_the_stored_cycling_path(clean_engine: Engine) -> 
     request_id = confirm_start(api, AVENUE_SOUTH_BLOCK_11, activity="road_cycling")
     run_id = start_run(api, request_id, TWENTY_KM).json()["id"]
 
-    route = api.get(f"/api/runs/{run_id}/route", headers=as_owner(api, "tom")).json()
-    gpx = api.get(f"/api/runs/{run_id}/route.gpx", headers=as_owner(api, "tom"))
+    route = api.get(f"/api/runs/{run_id}/route", headers=as_owner(api, TOM)).json()
+    gpx = api.get(f"/api/runs/{run_id}/route.gpx", headers=as_owner(api, TOM))
 
     assert gpx.status_code == 200
     assert f'filename="road-cycling-loop-{run_id}.gpx"' in gpx.headers["content-disposition"]
@@ -323,8 +321,8 @@ def test_the_key_stays_out_of_cycling_responses_logs_and_the_database(
     request_id = confirm_start(api, AVENUE_SOUTH_BLOCK_11, activity="road_cycling")
     run = start_run(api, request_id, TWENTY_KM)
     run_id = run.json()["id"]
-    route = api.get(f"/api/runs/{run_id}/route", headers=as_owner(api, "tom"))
-    gpx = api.get(f"/api/runs/{run_id}/route.gpx", headers=as_owner(api, "tom"))
+    route = api.get(f"/api/runs/{run_id}/route", headers=as_owner(api, TOM))
+    gpx = api.get(f"/api/runs/{run_id}/route.gpx", headers=as_owner(api, TOM))
 
     for response in (run, route, gpx):
         assert SYNTHETIC_KEY not in response.text

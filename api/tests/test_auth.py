@@ -14,8 +14,8 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
-from route_api.auth import auth_from_env, create_session
-from tests.conftest import TOM_GITHUB_ID, api_with, as_owner
+from route_api.auth import create_session
+from tests.conftest import FAKE_TOKEN, TOM_GITHUB_ID, api_with, as_owner
 from tests.recorded_onemap import recorded_response
 
 OTHER_ALLOWED_ID = 2
@@ -141,14 +141,21 @@ def test_a_signed_out_session_stops_working(clean_engine: Engine) -> None:
     assert replayed.status_code == 401
 
 
-def test_starting_the_api_ends_sessions_of_owners_no_longer_allowed(
-    clean_engine: Engine, monkeypatch: pytest.MonkeyPatch
+def test_an_owner_taken_off_the_allowlist_is_refused_by_every_instance(
+    clean_engine: Engine,
 ) -> None:
+    # During a deploy the old instance, still on the old allowlist, can sign in an owner
+    # the new allowlist removed; the new instance must refuse that session.
     removed, _ = create_session(clean_engine, f"github:{OTHER_ALLOWED_ID}")
     kept, _ = create_session(clean_engine, f"github:{TOM_GITHUB_ID}")
-    monkeypatch.setenv("OWNER_GITHUB_IDS", str(TOM_GITHUB_ID))
-    auth_from_env(clean_engine)
-    api = anonymous(client_for(clean_engine))
+    api = anonymous(
+        api_with(
+            clean_engine,
+            httpx.MockTransport(recorded_response),
+            FAKE_TOKEN,
+            allowed_ids=frozenset({TOM_GITHUB_ID}),
+        )
+    )
     for token, status in [(removed, 401), (kept, 200)]:
         me = api.get("/api/auth/me", headers={"Cookie": f"__Host-route-session={token}"})
         assert me.status_code == status
