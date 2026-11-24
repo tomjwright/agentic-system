@@ -7,7 +7,7 @@ limit needs a day of runs, and nobody needs them after that. Runs at every API s
 on Render Free is at least daily after idling.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import Engine, delete
 from sqlalchemy.orm import Session
@@ -20,8 +20,7 @@ ROUTE_REQUEST_DAYS = 90
 E2E_ROUTE_REQUEST_HOURS = 24
 
 
-def purge_expired(engine: Engine) -> None:
-    now = datetime.now(UTC)
+def purge_expired(engine: Engine, now: datetime) -> None:
     cutoff = now - timedelta(days=ROUTE_REQUEST_DAYS)
     with Session(engine) as session, session.begin():
         requests = session.execute(

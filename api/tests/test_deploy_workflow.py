@@ -9,7 +9,16 @@ from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 
-WORKFLOWS = Path(__file__).parents[2] / ".github/workflows"
+
+def repository_root() -> Path:
+    # mutmut runs the tests from a copy in api/mutants/, one level deeper than usual.
+    for folder in Path(__file__).resolve().parents:
+        if (folder / ".github").is_dir():
+            return folder
+    raise FileNotFoundError(".github not found above " + __file__)
+
+
+WORKFLOWS = repository_root() / ".github/workflows"
 # The checks main's branch protection requires, plus the two smoke jobs added with deploy.
 REQUIRED_CHECKS = [
     "secrets-scan",

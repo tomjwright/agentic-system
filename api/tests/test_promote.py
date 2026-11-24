@@ -7,10 +7,12 @@ browser tests are a small Python command that passes or fails.
 
 import json
 import sys
+from typing import ClassVar
 
 import httpx
 import pytest
 
+from route_api import promote as promote_module
 from route_api.promote import Promotion, PromotionStopped, Settings, settings_from_env
 
 STAGED = "https://stage-abc.vercel.app"
@@ -48,7 +50,7 @@ class FakeHosts:
             return self.render(request, path.removeprefix("/v1/services/srv-api"))
         if path.startswith(("/v13/", "/v10/", "/v1/projects/")):
             assert request.headers["authorization"] == "Bearer vc"
-            return self.vercel(path)
+            return self.vercel(request, path)
         return self.app(request)
 
     def check_runs(self, request: httpx.Request) -> httpx.Response:
@@ -72,7 +74,7 @@ class FakeHosts:
         if path == "/deploys" and request.method == "POST":
             self.changes.append(f"render deploy {json.loads(request.content)['commitId']}")
             return httpx.Response(201, json={"id": "dep-new", "status": "created"})
-        if path == "/deploys/dep-new":
+        if path == "/deploys/dep-new" and request.method == "GET":
             return httpx.Response(
                 200, json={"id": "dep-new", "status": self.render_statuses.pop(0)}
             )
@@ -81,7 +83,11 @@ class FakeHosts:
             return httpx.Response(201, json={"id": "dep-rollback", "status": "created"})
         raise AssertionError(f"unexpected Render call {request.method} {path}")
 
-    def vercel(self, path: str) -> httpx.Response:
+    def vercel(self, request: httpx.Request, path: str) -> httpx.Response:
+        if path.startswith("/v13/deployments/"):
+            assert request.method == "GET"
+        else:
+            assert request.method == "POST"
         if path == "/v13/deployments/routes.vercel.app":
             if self.production_page is None:
                 return httpx.Response(404, json={"error": {"code": "not_found"}})
@@ -208,7 +214,9 @@ def test_an_api_deploy_that_never_goes_live_stops_promotion(
     hosts: FakeHosts, no_waiting: list[float]
 ) -> None:
     hosts.render_statuses = ["build_in_progress"] * 10
-    with pytest.raises(PromotionStopped, match="did not go live in time; previous API serving"):
+    with pytest.raises(
+        PromotionStopped, match=r"^API deploy did not go live in time; previous API serving$"
+    ):
         promote(hosts)
     assert no_waiting == [1] * 5
     assert hosts.changes == ["render deploy abc123"]
@@ -295,6 +303,20 @@ def test_an_anonymous_answer_other_than_401_fails_the_smoke_test(hosts: FakeHost
         promote(hosts)
 
 
+def test_signing_in_as_someone_other_than_smoke_fails_the_smoke_test(hosts: FakeHosts) -> None:
+    serving = hosts.app
+
+    def wrong_owner(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/auth/me" and "authorization" in request.headers:
+            return httpx.Response(200, json={"owner_id": "e2e", "csrf_token": ""})
+        return serving(request)
+
+    hosts.app = wrong_owner  # type: ignore[method-assign]
+    with pytest.raises(PromotionStopped, match="staged checks failed"):
+        promote(hosts)
+    assert hosts.changes == ["render deploy abc123", "render rollback dep-old"]
+
+
 def test_an_unreachable_site_fails_the_smoke_test(hosts: FakeHosts) -> None:
     serving = hosts.app
 
@@ -328,6 +350,12 @@ def test_settings_come_from_the_workflow_environment(monkeypatch: pytest.MonkeyP
         monkeypatch.setenv(name, value)
     loaded = settings_from_env()
     assert loaded.required_checks == REQUIRED
+    assert (loaded.repository, loaded.commit_sha) == ("tomjwright/agentic-system", "abc123")
+    assert (loaded.github_token, loaded.render_api_key) == ("gh", "rnd")
+    assert (loaded.render_service_id, loaded.vercel_token) == ("srv-api", "vc")
+    assert (loaded.vercel_project_id, loaded.vercel_bypass_secret) == ("prj", "bypass")
+    assert (loaded.staged_url, loaded.production_url) == (STAGED, PRODUCTION)
+    assert (loaded.smoke_token, loaded.e2e_token) == ("smoke-token", "e2e-token")
     assert loaded.browser_tests == [
         "npx",
         "playwright",
@@ -335,7 +363,46 @@ def test_settings_come_from_the_workflow_environment(monkeypatch: pytest.MonkeyP
         "--config",
         "playwright.staged.config.ts",
     ]
+    assert (loaded.browser_tests_dir / "playwright.staged.config.ts").is_file()
     assert (loaded.poll_seconds, loaded.checks_timeout_seconds) == (10, 3600)
     assert loaded.deploy_timeout_seconds == 1200
     assert loaded.smoke_token == "smoke-token"
     assert loaded.e2e_token == "e2e-token"
+
+
+class RecordedPromotion:
+    clients: ClassVar[list[httpx.Client]] = []
+    stop_with: ClassVar[str | None] = None
+
+    def __init__(self, client: httpx.Client, loaded: Settings) -> None:
+        assert loaded == settings()
+        self.clients.append(client)
+
+    def run(self) -> None:
+        if self.stop_with is not None:
+            raise PromotionStopped(self.stop_with)
+
+
+@pytest.mark.parametrize(
+    ("stop_with", "printed", "exit_code"),
+    [(None, "Promoted\n", None), ("checks failed", "Not promoted: checks failed\n", 1)],
+)
+def test_main_runs_the_promotion_and_exits_1_when_it_stops(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    stop_with: str | None,
+    printed: str,
+    exit_code: int | None,
+) -> None:
+    monkeypatch.setattr(promote_module, "settings_from_env", settings)
+    monkeypatch.setattr(promote_module, "Promotion", RecordedPromotion)
+    RecordedPromotion.clients = []
+    RecordedPromotion.stop_with = stop_with
+    if exit_code is None:
+        promote_module.main()
+    else:
+        with pytest.raises(SystemExit) as stopped:
+            promote_module.main()
+        assert stopped.value.code == exit_code
+    assert capsys.readouterr().out == printed
+    assert [client.timeout for client in RecordedPromotion.clients] == [httpx.Timeout(30)]

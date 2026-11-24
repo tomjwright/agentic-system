@@ -37,7 +37,16 @@ GITHUB_API = "https://api.github.com"
 RENDER_API = "https://api.render.com/v1"
 VERCEL_API = "https://api.vercel.com"
 RENDER_FAILED = {"build_failed", "update_failed", "pre_deploy_failed", "canceled", "deactivated"}
-WEB_DIR = Path(__file__).parents[3] / "web"
+
+
+def web_dir() -> Path:
+    # Usually three folders up; mutmut runs a copy of this file one folder deeper.
+    for folder in Path(__file__).resolve().parents:
+        if (folder / "web/playwright.staged.config.ts").is_file():
+            return folder / "web"
+    raise FileNotFoundError("web/playwright.staged.config.ts not found above " + __file__)
+
+
 STAGED_BROWSER_TESTS = ["npx", "playwright", "test", "--config", "playwright.staged.config.ts"]
 # The only variables the browser tests see; the provider tokens stay with this process.
 BROWSER_TEST_ENV = [
@@ -70,6 +79,7 @@ class Settings:
     smoke_token: str
     e2e_token: str
     browser_tests: list[str] = field(default_factory=STAGED_BROWSER_TESTS.copy)
+    browser_tests_dir: Path = field(default_factory=web_dir)
     poll_seconds: float = 10
     checks_timeout_seconds: float = 60 * 60
     deploy_timeout_seconds: float = 20 * 60
@@ -137,7 +147,7 @@ class Promotion:
         response = self.http.get(
             f"{GITHUB_API}/repos/{s.repository}/commits/{s.commit_sha}/check-runs",
             params={"per_page": 100, "filter": "latest"},
-            headers={"Authorization": f"Bearer {s.github_token}"},
+            headers={"authorization": f"Bearer {s.github_token}"},
         )
         response.raise_for_status()
         conclusions: dict[str, str | None] = {}
@@ -156,7 +166,7 @@ class Promotion:
     def production_deployment(self) -> str | None:
         """The page deployment serving the production domain, or None before the first."""
         host = self.settings.production_url.removeprefix("https://")
-        headers = {"Authorization": f"Bearer {self.settings.vercel_token}"}
+        headers = {"authorization": f"Bearer {self.settings.vercel_token}"}
         response = self.http.get(f"{VERCEL_API}/v13/deployments/{host}", headers=headers)
         if response.status_code == 404:
             return None
@@ -192,7 +202,7 @@ class Promotion:
 
     def smoke(self, base_url: str, headers: dict[str, str]) -> str | None:
         """Signed-in checks a deploy must pass. Returns the first problem, or None."""
-        bearer = {**headers, "Authorization": f"Bearer {self.settings.smoke_token}"}
+        bearer = {**headers, "authorization": f"Bearer {self.settings.smoke_token}"}
         try:
             ready = self.http.get(f"{base_url}/api/ready", headers=headers, timeout=90)
             if ready.status_code != 200:
@@ -222,20 +232,20 @@ class Promotion:
             if name not in env and name in os.environ:
                 env[name] = os.environ[name]
         # The command is STAGED_BROWSER_TESTS above; only tests swap it.
-        finished = subprocess.run(s.browser_tests, cwd=WEB_DIR, env=env, check=False)  # noqa: S603
+        finished = subprocess.run(s.browser_tests, cwd=s.browser_tests_dir, env=env, check=False)  # noqa: S603
         if finished.returncode != 0:
             return f"the staged browser tests failed (exit {finished.returncode})"
         return None
 
     def render(self, method: str, path: str, **kwargs: object) -> dict:  # type: ignore[type-arg]
         url = f"{RENDER_API}/services/{self.settings.render_service_id}{path}"
-        headers = {"Authorization": f"Bearer {self.settings.render_api_key}"}
+        headers = {"authorization": f"Bearer {self.settings.render_api_key}"}
         response = self.http.request(method, url, headers=headers, **kwargs)  # type: ignore[arg-type]
         response.raise_for_status()
         return response.json()  # type: ignore[no-any-return]
 
     def vercel(self, method: str, path: str) -> dict:  # type: ignore[type-arg]
-        headers = {"Authorization": f"Bearer {self.settings.vercel_token}"}
+        headers = {"authorization": f"Bearer {self.settings.vercel_token}"}
         response = self.http.request(method, f"{VERCEL_API}{path}", headers=headers)
         response.raise_for_status()
         return response.json()  # type: ignore[no-any-return]

@@ -555,7 +555,7 @@ def app_from_env() -> FastAPI:
     heigit = Heigit(httpx.Client(), api_key=os.environ.get("HEIGIT_API_KEY"))
     # Neon suspends idle computes; pre-ping replaces connections it closed.
     engine = create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
-    purge_expired(engine)
+    purge_expired(engine, datetime.now(UTC))
     return create_app(
         onemap, engine, auth_from_env(engine), heigit=heigit, restricted_ways=load_restricted_ways()
     )
