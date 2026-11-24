@@ -12,6 +12,7 @@ from sqlalchemy import Engine, create_engine, text
 from route_api.heigit import Heigit
 from route_api.main import create_app
 from route_api.onemap import OneMap
+from route_api.restrictions import load_restricted_ways
 from tests import recorded_heigit
 from tests.recorded_onemap import recorded_response
 
@@ -22,6 +23,7 @@ TEST_DATABASE_URL = os.environ.get(
 FAKE_TOKEN = "fake-onemap-token-for-tests"
 FAKE_HEIGIT_KEY = "fake-heigit-key-for-tests"
 API_DIR = Path(__file__).parent.parent
+RESTRICTED_WAYS = load_restricted_ways()
 
 
 @pytest.fixture(scope="session")
@@ -55,7 +57,8 @@ def api_with(
     onemap = OneMap(httpx.Client(transport=handler), token=token, retry_wait_seconds=0)
     heigit_http = httpx.Client(transport=httpx.MockTransport(heigit_handler))
     heigit = Heigit(heigit_http, heigit_key, request_gap_seconds=0, retry_wait_seconds=0)
-    return TestClient(create_app(onemap, engine, local_owner="local-owner", heigit=heigit))
+    app = create_app(onemap, engine, "local-owner", heigit=heigit, restricted_ways=RESTRICTED_WAYS)
+    return TestClient(app)
 
 
 @pytest.fixture

@@ -3,7 +3,8 @@
     uv run --with osmium python scripts/extract_restricted_ways.py Singapore.osm.pbf data/
 
 Keeps expressways and their slip roads, trunk roads, road tunnels and ways tagged
-bicycle=no. Output: data/restricted_ways.geojson (OSM data, ODbL).
+bicycle=no. Output: data/restricted_ways.geojson (OSM data, ODbL), with the extract's
+file name and OSM timestamp under "source".
 """
 
 import json
@@ -48,7 +49,15 @@ def main() -> None:
     pbf_path, out_dir = Path(sys.argv[1]), Path(sys.argv[2])
     handler = RestrictedWays()
     handler.apply_file(str(pbf_path), locations=True)
-    collection = {"type": "FeatureCollection", "features": handler.features}
+    reader = osmium.io.Reader(str(pbf_path))
+    timestamp = reader.header().get("osmosis_replication_timestamp")
+    reader.close()
+    source = {
+        "extract": pbf_path.name,
+        "osm_timestamp": timestamp,
+        "licence": "© OpenStreetMap contributors, ODbL 1.0",
+    }
+    collection = {"type": "FeatureCollection", "source": source, "features": handler.features}
     (out_dir / "restricted_ways.geojson").write_text(json.dumps(collection))
     print(f"{len(handler.features)} ways -> {out_dir / 'restricted_ways.geojson'}")
 

@@ -1,4 +1,4 @@
-"""Ask HeiGIT for a few running loops from a confirmed start and pick an acceptable one.
+"""Ask HeiGIT for a few running or road-cycling loops from a start and pick an acceptable one.
 
 This follows the feasibility go conditions (feasibility/EVIDENCE.md):
 
@@ -6,9 +6,12 @@ This follows the feasibility go conditions (feasibility/EVIDENCE.md):
 - after each measured loop the requested length is corrected by how far the last loop
   missed the target, because HeiGIT's round-trip lengths drift;
 - after two round trips fail or leave Singapore (a coastal start puts random points in
-  the sea), the next attempts are via loops through points pulled inland.
+  the sea), the next attempts are via loops through points pulled inland. A via loop
+  that returns keeps its bearing for the corrected length; one that fails turns.
 
-At most MAX_ATTEMPTS requests are made, and generation stops at the first acceptable loop.
+Road-cycling loops are also checked against the OpenStreetMap restricted roads
+(route_api.restrictions). At most MAX_ATTEMPTS requests are made, and generation stops at
+the first acceptable loop.
 """
 
 import math
@@ -17,6 +20,7 @@ from pydantic import BaseModel
 
 from route_api.geography import line_length_m, offset, on_singapore_land
 from route_api.heigit import FATAL_CODES, Heigit, HeigitError, round_trip_body, via_loop_body
+from route_api.restrictions import RestrictedWays, check_route
 from route_api.route_selection import (
     Attempt,
     DistanceBounds,
@@ -26,8 +30,10 @@ from route_api.route_selection import (
     select_route,
 )
 
-GENERATOR_VERSION = "running-loop-1"
+GENERATOR_VERSIONS = {"running": "running-loop-1", "road_cycling": "road-cycling-loop-1"}
 MAX_ATTEMPTS = 5
+# HeiGIT's longest round trip (feasibility/EVIDENCE.md).
+MAX_ROUND_TRIP_M = 100_000
 ROUND_TRIP_FAILURES_BEFORE_VIA = 2
 # A via loop through 3 points on a circle through the start is about 5.66 radii as the crow
 # flies; paths add roughly 30%.
@@ -44,31 +50,38 @@ class Generation(BaseModel):
     error_message: str | None = None
 
 
-def generate(heigit: Heigit, start: tuple[float, float], bounds: DistanceBounds) -> Generation:
+def generate(
+    heigit: Heigit,
+    activity: str,
+    start: tuple[float, float],
+    bounds: DistanceBounds,
+    restricted_ways: RestrictedWays,
+) -> Generation:
     attempts: list[Attempt] = []
     length_m = bounds.target_m
     seed = 0
     round_trip_failures = 0
-    via_loops = 0
+    via_turn = 0
     for _ in range(MAX_ATTEMPTS):
         if round_trip_failures < ROUND_TRIP_FAILURES_BEFORE_VIA:
             seed += 1
+            requested_m = min(length_m, MAX_ROUND_TRIP_M)
             attempt = Attempt(
-                method="round_trip", parameters={"length_m": round(length_m), "seed": seed}
+                method="round_trip", parameters={"length_m": round(requested_m), "seed": seed}
             )
-            body = round_trip_body(start, length_m, seed)
+            body = round_trip_body(activity, start, requested_m, seed)
         else:
-            bearing = (inland_bearing(start) + VIA_TURNS[via_loops % len(VIA_TURNS)]) % 360
-            via_loops += 1
+            requested_m = length_m
+            bearing = (inland_bearing(start) + VIA_TURNS[via_turn % len(VIA_TURNS)]) % 360
             attempt = Attempt(
                 method="via_loop", parameters={"length_m": round(length_m), "bearing": bearing}
             )
-            body = via_loop_body(start, inland_via_points(start, length_m, bearing))
+            body = via_loop_body(activity, start, inland_via_points(start, length_m, bearing))
         attempt.parameters["provider_request"] = body
         attempts.append(attempt)
 
         try:
-            route = heigit.running_route(body)
+            route = heigit.route(activity, body)
         except HeigitError as error:
             attempt.problem = str(error)
             if error.code in FATAL_CODES:
@@ -80,16 +93,25 @@ def generate(heigit: Heigit, start: tuple[float, float], bounds: DistanceBounds)
                 )
             if attempt.method == "round_trip":
                 round_trip_failures += 1
+            else:
+                via_turn += 1
             continue
 
         attempt.route = route
-        if not rejection_reasons(start, bounds, route):
+        if activity == "road_cycling":
+            attempt.restricted_roads = check_route(
+                route.coordinates, route.step_names, restricted_ways
+            )
+        if not rejection_reasons(start, bounds, route, attempt.restricted_roads):
             break
-        if attempt.method == "round_trip" and points_outside_singapore(route.coordinates):
-            round_trip_failures += 1
+        if points_outside_singapore(route.coordinates):
+            if attempt.method == "round_trip":
+                round_trip_failures += 1
+            else:
+                via_turn += 1
         measured_m = line_length_m(route.coordinates)
         if measured_m > 0:
-            corrected_m = length_m * bounds.target_m / measured_m
+            corrected_m = requested_m * bounds.target_m / measured_m
             length_m = min(max(corrected_m, bounds.target_m / 2), bounds.target_m * 1.5)
 
     return Generation(attempts=attempts, selection=select_route(start, bounds, attempts))

@@ -13,6 +13,7 @@ from route_api.heigit import Heigit
 from route_api.logs import configure_logging
 from route_api.main import create_app
 from route_api.onemap import OneMap
+from route_api.restrictions import load_restricted_ways
 from tests import recorded_heigit
 from tests.recorded_onemap import recorded_response
 
@@ -24,7 +25,9 @@ def main() -> None:
     engine = create_engine(os.environ["DATABASE_URL"])
     heigit_http = httpx.Client(transport=httpx.MockTransport(recorded_heigit.recorded_response))
     heigit = Heigit(heigit_http, api_key="recorded-responses", request_gap_seconds=0)
-    app = create_app(onemap, engine, local_owner="e2e-owner", heigit=heigit)
+    app = create_app(
+        onemap, engine, "e2e-owner", heigit=heigit, restricted_ways=load_restricted_ways()
+    )
     uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("PORT", "8001")), access_log=False)
 
 

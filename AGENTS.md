@@ -58,7 +58,7 @@ uv sync
 uv run ruff check . && uv run ruff format --check .
 uv run mypy
 uv run pytest
-uv export --frozen --no-emit-project | uv run pip-audit --strict --disable-pip -r /dev/stdin
+uv export --frozen --no-emit-project --no-emit-package route-feasibility | uv run pip-audit --strict --disable-pip -r /dev/stdin
 
 cd ../web
 npm ci
