@@ -135,6 +135,27 @@ fieldset {
   background: #e3f2fd;
 }
 
+.assistant {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #ddd;
+}
+
+.assistant label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.assistant textarea {
+  font: inherit;
+  padding: 0.5rem;
+}
+
+.answer {
+  margin-top: 0.75rem;
+}
+
 .distance {
   display: flex;
   flex-direction: column;

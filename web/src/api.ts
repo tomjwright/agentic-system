@@ -101,3 +101,18 @@ export function getSelectedRoute(runId: string): Promise<SelectedRoute> {
 export function gpxUrl(runId: string): string {
   return `/api/runs/${runId}/route.gpx`;
 }
+
+export type AgentAnswer = components["schemas"]["AgentAnswer"];
+export type AgentStep = components["schemas"]["AgentStep"];
+
+// One synchronous request: the answer comes back once it is judged (or written from facts).
+export function askAssistant(
+  routeRequestId: string,
+  brief: string,
+  distance: Distance | null,
+): Promise<AgentAnswer> {
+  return call(`/api/route-requests/${routeRequestId}/agent-runs`, {
+    method: "POST",
+    body: JSON.stringify({ brief, distance }),
+  });
+}
