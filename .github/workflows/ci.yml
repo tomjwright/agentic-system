@@ -117,8 +117,9 @@ jobs:
         run: uv run mutmut results --all true | python3 ../scripts/mutation_floor.py 94
 
   mutation-api:
-    # The same for sign-in (auth.py) and the cycling restriction rules (restrictions.py). Each
-    # mutant's tests get their own database (tests/conftest.py).
+    # The same for sign-in (auth.py), the cycling restriction rules (restrictions.py) and the
+    # deploy gate (promote.py, retention.py). Each mutant's tests get their own database
+    # (tests/conftest.py).
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
@@ -140,7 +141,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
       - run: uv sync --locked
-      - name: Mutate route_api/auth.py and route_api/restrictions.py and run the tests on each mutant
+      - name: Mutate sign-in, restriction and deploy-gate code and run the tests on each mutant
         run: uv run mutmut run --max-children 4
       - name: Fail below 94% killed
         run: uv run mutmut results --all true | python3 ../scripts/mutation_floor.py 94

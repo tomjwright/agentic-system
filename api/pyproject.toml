@@ -70,6 +70,11 @@ precision = 2
 show_missing = true
 
 [tool.mutmut]
-source_paths = ["src/route_api/auth.py", "src/route_api/restrictions.py"]
+source_paths = [
+    "src/route_api/auth.py",
+    "src/route_api/restrictions.py",
+    "src/route_api/promote.py",
+    "src/route_api/retention.py",
+]
 pytest_add_cli_args_test_selection = ["tests/"]
 also_copy = ["src/route_api/", "migrations/", "alembic.ini"]
