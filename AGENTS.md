@@ -38,6 +38,9 @@ live in `tomjwright/home` `AGENTS.md`; this file adds the rules for this repo.
 - Live runs are manual and bounded: `feasibility/scripts/run_live_cases.sh` makes at
   most 38 HeiGIT requests and `api/scripts/record_heigit.py` at most 5 per scenario
   (free plan: 2000 directions a day, 40 a minute).
+- Each deploy's staged browser test (`web/e2e-staged/`, run by `route_api.promote`) makes one
+  OneMap search and at most 5 HeiGIT requests as owner `e2e`, which the API allows one run
+  every 10 minutes and 3 a day.
 - The only scheduled live call is `.github/workflows/provider-canary.yml`: one OneMap search
   (no token, so an expired token never fails it) and two HeiGIT directions a night.
 - Downloaded datasets go in `feasibility/data/` (git-ignored).
@@ -45,8 +48,8 @@ live in `tomjwright/home` `AGENTS.md`; this file adds the rules for this repo.
 ## Checks
 
 PostgreSQL must be running for the api and browser tests (`docker run -d -p 5432:5432
--e POSTGRES_PASSWORD=postgres postgres:17`, then create databases `routes_test` and
-`routes_e2e`).
+-e POSTGRES_PASSWORD=postgres postgres:17`, then create databases `routes_test`,
+`routes_e2e` and `routes_render`). The render smoke needs `yq`.
 
 ```bash
 cd feasibility
@@ -74,4 +77,16 @@ npm run lint
 npm audit --audit-level=moderate
 npm run e2e        # builds the page, starts the api with recorded OneMap and HeiGIT, desktop + mobile
 ! grep -rl -e "api.heigit.org" -e "HEIGIT_API_KEY" -e "ONEMAP_API_TOKEN" .next/static
+npm run e2e:staged # the deploy's staged browser test, recorded API, from an origin it does not trust
+
+cd ..
+# render-smoke: render.yaml's exact build and start commands, failing unless /api/ready answers
+DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/routes_render \
+  APP_ORIGIN=https://app.example.invalid GITHUB_CLIENT_ID=synthetic GITHUB_CLIENT_SECRET=synthetic \
+  ONEMAP_API_TOKEN=synthetic HEIGIT_API_KEY=synthetic scripts/render_smoke.sh
+# vercel-build: build as Vercel does (web/vercel.json), then the deploy's provider scan
+npm ci --prefix ops/vercel-cli
+mkdir -p .vercel && echo '{"projectId": "ci", "orgId": "ci", "settings": {"framework": "nextjs", "rootDirectory": "web"}}' > .vercel/project.json
+ops/vercel-cli/node_modules/.bin/vercel build --prod --yes && scripts/no_provider_secrets.sh .vercel/output
+actionlint && zizmor --offline .github/workflows
 ```
