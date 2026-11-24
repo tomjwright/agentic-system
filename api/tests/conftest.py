@@ -18,6 +18,16 @@ from route_api.restrictions import load_restricted_ways
 from tests import recorded_heigit
 from tests.recorded_onemap import recorded_response
 
+# No test sends a trace to LangSmith, whatever the developer's shell sets. LangSmith reads
+# these once per process, so they are removed before any test runs.
+for tracing_variable in (
+    "LANGSMITH_TRACING",
+    "LANGSMITH_TRACING_V2",
+    "LANGCHAIN_TRACING",
+    "LANGCHAIN_TRACING_V2",
+):
+    os.environ.pop(tracing_variable, None)
+
 # A database the tests may wipe. Never point this at real data.
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/routes_test"

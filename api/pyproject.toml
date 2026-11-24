@@ -75,6 +75,8 @@ show_missing = true
 
 [tool.mutmut]
 source_paths = [
+    "src/route_api/agent.py",
+    "src/route_api/agent_models.py",
     "src/route_api/auth.py",
     "src/route_api/restrictions.py",
     "src/route_api/promote.py",
