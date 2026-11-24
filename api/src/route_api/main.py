@@ -560,6 +560,7 @@ def create_app(
                     restriction_data = None
                     if activity == "road_cycling":
                         restriction_data = restricted_ways.source
+                    auth.lock_owner(session, owner)
                     generation_run = new_run(
                         session,
                         owner,

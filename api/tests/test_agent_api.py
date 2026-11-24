@@ -15,11 +15,14 @@ import httpx2
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
+from sqlalchemy.orm import Session
 
 from route_api.agent_models import Interpretation, Verdict
 from route_api.contracts import DistanceTarget
+from route_api.db import GenerationRunRecord
 from route_api.llm import Models
 from route_api.retention import ROUTE_REQUEST_DAYS, purge_expired
+from route_api.runs import save_generation
 from tests.conftest import SOMEONE, TOM, api_with, as_owner
 from tests.fake_models import FakeModel
 from tests.recorded_heigit import FIXTURES
@@ -220,6 +223,29 @@ def test_old_agent_runs_go_with_their_route_request(clean_engine: Engine) -> Non
 
 class Broken(Exception):
     """An unexpected failure, carrying text that must not reach the user or the database."""
+
+
+def test_a_route_is_saved_holding_the_owner_lock(
+    clean_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """So a concurrent run can neither take the same revision number nor count the owner's
+    runs while the agent's route is half saved."""
+    api = agent_api(clean_engine, fake_models([RUN_5K, GOOD_DRAFT], [APPROVED]))
+    request_id = confirm_start(api, AVENUE_SOUTH_BLOCK_11)
+    lock = text("SELECT pg_try_advisory_xact_lock(hashtext(:owner))")
+    others_got_the_lock = []
+
+    def save_while_another_tries_the_lock(
+        session: Session, run: GenerationRunRecord, generation: Any
+    ) -> None:
+        with Session(clean_engine) as concurrent:
+            others_got_the_lock.append(concurrent.scalar(lock, {"owner": run.owner_id}))
+        save_generation(session, run, generation)
+
+    monkeypatch.setattr("route_api.main.save_generation", save_while_another_tries_the_lock)
+
+    assert ask(api, request_id).status_code == 201
+    assert others_got_the_lock == [False]
 
 
 def fail(*args: object) -> None:
