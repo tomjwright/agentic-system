@@ -89,6 +89,40 @@ They never contain search text, coordinates, the token or the key. Set
 `OTEL_EXPORTER_OTLP_ENDPOINT` to export spans for each HeiGIT call, generation and
 database write (no coordinates in their attributes).
 
+## Evals
+
+`uv run python -m route_api.evals` runs the labelled cases in `evals/` with the real models,
+one at a time, on recorded OneMap and HeiGIT responses only. It needs both models' keys and
+fails (exit 2) without them. `--agent-model` and `--judge-model` take any `provider:model`
+spec (`anthropic` or `google_genai`) to compare candidates on the same cases.
+
+- Judge cases (`judge_cases.yaml`): fixed `RouteFacts`, a draft and the right verdict. It
+  reports false approvals (a bad draft approved) and false rejections (an honest one rejected).
+- Agent cases (`agent_cases.yaml`): a brief and form values through the whole graph, scored
+  on the result's kind, clarification reason and message source.
+- Every published message is checked by code against its facts (`contradictions` in
+  `evals.py`: measurements not in the facts, the other activity, unsupported safety, shade,
+  surface or greenery claims, a left-out trunk-road, tunnel or unknown-surface disclosure,
+  words aimed at the checker), so the judge is never its own only evaluator.
+
+The run fails on any published contradiction, on any approved draft that invents a
+measurement, makes an unsupported claim, ignores a constraint or tries a bypass, and when a
+rate is worse than `evals/baseline.json`. A missed disclosure only counts towards the
+false-approval rate.
+
+Candidates on 2026-11-25 (same 23 judge and 13 agent cases):
+
+| Agent / judge | False approvals | False rejections | Agent cases |
+| --- | --- | --- | --- |
+| `gemini-3.5-flash-lite` / `gemini-3.5-flash-lite` | 3/17: wrong tries, trunk roads, tunnel | 0/6 | 7/13, then 10/13 |
+| `gemini-3.1-flash-lite` judge only | 2/17: trunk roads, tunnel | 4/6 | not run |
+
+The flash-lite agent cases fail on published replies that leave out the unknown surface (the
+judge approved them) and on honest drafts the judge rejected twice (fallback). The baseline is
+the better candidate's measured rates; it is provisional until the default pair has run. The
+default judge `gemini-3.5-flash` allows 20 free requests a day and one run needs about 40, so it
+cannot finish a run on the free tier.
+
 ## OneMap token
 
 OneMap's terms require a registered account. `ONEMAP_API_TOKEN` is the access token

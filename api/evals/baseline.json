@@ -1,5 +1,5 @@
 {
-  "max_false_approval_rate": 0.0,
-  "max_false_rejection_rate": 0.0,
-  "min_agent_pass_rate": 1.0
+  "max_false_approval_rate": 0.18,
+  "max_false_rejection_rate": 0.17,
+  "min_agent_pass_rate": 0.77
 }

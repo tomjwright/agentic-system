@@ -49,7 +49,9 @@ JudgeKind = Literal[
     "missing_disclosure",
     "bypass",
 ]
-ZERO_TOLERANCE = {"invented_measurement", "bypass"}  # one false approval fails the run
+# One false approval of a stated falsehood or a bypass fails the run; a missed disclosure counts
+# towards the false-approval rate.
+ZERO_TOLERANCE = {"invented_measurement", "unsupported_claim", "ignored_constraint", "bypass"}
 
 
 class JudgeCase(BaseModel):
@@ -193,6 +195,7 @@ def run_evals(eval_set: EvalSet, models: Models, pause_s: float) -> Report:
     restricted_ways = load_restricted_ways()
     for case in eval_set.judge_cases:
         approved = judge_draft(case, eval_set.facts[case.facts], models, restricted_ways)
+        print(f"  judge {'approved' if approved else 'rejected'} {case.name!r}", flush=True)
         if approved and case.kind != "honest":
             report.false_approvals.append(case)
         if not approved and case.kind == "honest":
@@ -203,6 +206,9 @@ def run_evals(eval_set: EvalSet, models: Models, pause_s: float) -> Report:
     )
     for agent_case in eval_set.agent_cases:
         result = run_case(agent_case, models, onemap, restricted_ways)
+        print(
+            f"  agent case {agent_case.name!r}: {result.kind}, {result.message_source}", flush=True
+        )
         problems = agent_case_problems(agent_case, result)
         published = contradictions(result.message, result.facts)
         for problem in problems:
@@ -211,6 +217,7 @@ def run_evals(eval_set: EvalSet, models: Models, pause_s: float) -> Report:
             report.published.append(f"agent case {agent_case.name!r} published: {problem}")
         if problems or published:
             report.failed_cases.add(agent_case.name)
+            print(f"    message: {result.message!r}", flush=True)
         time.sleep(pause_s)
     return report
 
