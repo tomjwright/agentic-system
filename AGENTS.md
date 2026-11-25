@@ -93,4 +93,5 @@ npm ci --prefix ops/vercel-cli
 mkdir -p .vercel && echo '{"projectId": "ci", "orgId": "ci", "settings": {"framework": "nextjs", "rootDirectory": "web"}}' > .vercel/project.json
 ops/vercel-cli/node_modules/.bin/vercel build --prod --yes && scripts/no_provider_secrets.sh .vercel/output
 actionlint && zizmor --offline .github/workflows
+uvx --python 3.12 semgrep@1.187.0 scan --metrics=off --error --config p/python --config p/typescript --config p/react --config p/github-actions feasibility/src api/src web/src .github
 ```
