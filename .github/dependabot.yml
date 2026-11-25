@@ -1,0 +1,52 @@
+# Weekly update PRs for both uv projects, both npm projects and the pinned actions.
+# A release must be 7 days old first, so a hijacked release is usually pulled before
+# it reaches a PR. Each PR passes the same required checks, and deploys only after merge.
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /api
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      dev:
+        dependency-type: development
+  - package-ecosystem: uv
+    directory: /feasibility
+    # api/uv.lock records feasibility's requirements, so changing them here would leave it stale.
+    versioning-strategy: lockfile-only
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      dev:
+        dependency-type: development
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      dev:
+        dependency-type: development
+  - package-ecosystem: npm
+    directory: /ops/vercel-cli
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      dev:
+        dependency-type: development
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

@@ -31,6 +31,8 @@ jobs:
       - name: Audit dependencies for known vulnerabilities
         # --disable-pip audits the hashed export as-is, so packages pip-audit itself needs (like pip) are not skipped.
         run: uv export --frozen --no-emit-project | uv run pip-audit --strict --disable-pip -r /dev/stdin
+      - name: Fail on any licence outside this permissive list (GPL and AGPL are not on it)
+        run: uv run pip-licenses --from=mixed --partial-match --with-system --allow-only "MIT;BSD;Apache;ISC;PSF;Python Software Foundation;MPL-2.0;Mozilla Public License 2.0;LGPL;GNU Lesser General Public License;Unlicense"
 
   api:
     runs-on: ubuntu-latest
@@ -64,6 +66,8 @@ jobs:
         run: uv run alembic upgrade head && uv run alembic downgrade base && uv run alembic upgrade head
       - name: Audit dependencies for known vulnerabilities
         run: uv export --frozen --no-emit-project --no-emit-package route-feasibility | uv run pip-audit --strict --disable-pip -r /dev/stdin
+      - name: Fail on any licence outside this permissive list (GPL and AGPL are not on it)
+        run: uv run pip-licenses --from=mixed --partial-match --with-system --allow-only "MIT;BSD;Apache;ISC;PSF;Python Software Foundation;MPL-2.0;Mozilla Public License 2.0;LGPL;GNU Lesser General Public License;Unlicense"
 
   migration-compat:
     # A new migration must not break the release still serving while it runs, or the release a
@@ -177,6 +181,13 @@ jobs:
       - run: npm run lint
       - name: Audit dependencies for known vulnerabilities
         run: npm audit --audit-level=moderate
+      # react-leaflet is Hippocratic-2.1 (not OSI-approved): excluded by name and version, so any
+      # other package, or a new react-leaflet version, must pass the list or be reviewed again.
+      - name: Fail on any production package licence outside this permissive list
+        run: >-
+          npx --yes license-checker-rseidelsohn@4.4.2 --production --excludePrivatePackages --summary
+          --excludePackages "@react-leaflet/core@3.0.0;react-leaflet@5.0.0"
+          --onlyAllow "MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0;0BSD;BlueOak-1.0.0;CC0-1.0;CC-BY-4.0;MPL-2.0;LGPL-3.0-or-later;OFL-1.1"
       - run: npx playwright install --with-deps chromium
       - name: API-to-browser tests (desktop and mobile)
         # A synthetic key in the build environment must not reach the bundle (checked below).
@@ -285,3 +296,6 @@ jobs:
           tar -xzf "${archive}" gitleaks
       - name: Scan all commits for secrets
         run: ./gitleaks git --redact --no-banner .
+      # git log shows no diff for a merge commit, so also scan the files as they are now.
+      - name: Scan the checked-out files for secrets
+        run: ./gitleaks dir --redact --no-banner .
