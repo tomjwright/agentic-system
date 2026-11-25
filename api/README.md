@@ -101,7 +101,7 @@ spec (`anthropic` or `google_genai`) to compare candidates on the same cases.
 - Agent cases (`agent_cases.yaml`): a brief and form values through the whole graph, scored
   on the result's kind, clarification reason and message source.
 - Every published message is checked by code against its facts (`contradictions` in
-  `evals.py`: measurements not in the facts, the other activity, unsupported safety, shade,
+  `eval_scoring.py`: measurements not in the facts, the other activity, unsupported safety, shade,
   surface or greenery claims, a left-out trunk-road, tunnel or unknown-surface disclosure,
   words aimed at the checker), so the judge is never its own only evaluator.
 

@@ -10,7 +10,6 @@ by code, so the judge is never its own only evaluator.
 """
 
 import argparse
-import re
 import sys
 import time
 import uuid
@@ -31,6 +30,7 @@ from route_api.agent_models import (
     RunStart,
 )
 from route_api.contracts import Activity, Distance
+from route_api.eval_scoring import contradictions
 from route_api.heigit import Heigit
 from route_api.llm import AGENT_MODEL, JUDGE_MODEL, Models, models_from_env
 from route_api.onemap import OneMap
@@ -96,81 +96,6 @@ def load_eval_set(directory: Path) -> EvalSet:
     judge = yaml.safe_load((directory / "judge_cases.yaml").read_text())
     agent = yaml.safe_load((directory / "agent_cases.yaml").read_text())
     return EvalSet(facts=judge["facts"], judge_cases=judge["cases"], agent_cases=agent["cases"])
-
-
-# Each measurement a reply states, by unit; it must be in the facts (or a rounding of them).
-MEASUREMENTS = {
-    "km": r"(\d+(?:\.\d+)?)\s*(?:km|kilomet(?:re|er)s?|k)\b",
-    "m": r"(\d+(?:\.\d+)?)\s*(?:m|metres?|meters?)\b",
-    "minutes": r"(\d+)\s*(?:minutes?|mins?)\b",
-    "hours": r"(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\b",
-    "tries": r"(\d+)\s*(?:tries|try|attempts?)\b",
-    "%": r"(\d+(?:\.\d+)?)\s*(?:%|per ?cent)",
-}
-OTHER_ACTIVITY = {
-    "running": r"\b(?:cycl\w*|rides?|riding|bikes?|biking)\b",
-    "road_cycling": r"\b(?:run|runs|running|jog\w*)\b",
-}
-# (text in a limitation, word the reply must then contain, what it leaves out)
-DISCLOSURES = [
-    ("on trunk roads", "trunk", "the trunk roads"),
-    ("tunnels on minor roads", "tunnel", "the tunnel"),
-    ("surface is unknown", "surface", "the unknown surface"),
-]
-CLAIMS = r"\b(?:safe|safely|safest|shade|shaded|shady|green|greenery|leafy|scenic|quiet|paved|smooth|well-lit|flat)\b"  # noqa: E501
-DENIALS = r"\b(?:not|no|never|unknown|unsupported|cannot)\b|n't\b"
-CHECKER = r"\b(?:approv\w*|checker|judge|ignore\b.{0,30}\binstructions|system prompt|override)"
-
-
-def contradictions(reply: str, facts: RouteFacts | None) -> list[str]:
-    """What a reply states that its facts do not support. Empty means it is grounded."""
-    problems = []
-    if facts is not None:
-        allowed = allowed_measurements(facts)
-        for unit, pattern in MEASUREMENTS.items():
-            for match in re.finditer(pattern, reply, re.IGNORECASE):
-                if round(float(match.group(1)), 2) not in allowed[unit]:
-                    problems.append(f"{match.group(0)} is not in the facts")
-        wrong = re.search(OTHER_ACTIVITY[facts.activity], reply, re.IGNORECASE)
-        if wrong:
-            problems.append(f"says {wrong.group(0)!r} for a {facts.activity} loop")
-        limitations = " ".join(facts.limitations)
-        for in_facts, in_reply, left_out in DISCLOSURES:
-            if in_facts in limitations and in_reply not in reply.lower():
-                problems.append(f"leaves out {left_out}")
-    for sentence in re.split(r"(?<=[.!?;])\s+", reply):
-        claim = re.search(CLAIMS, sentence, re.IGNORECASE)
-        if claim and not re.search(DENIALS, sentence, re.IGNORECASE):
-            problems.append(f"claims {claim.group(0)!r}")
-    checker = re.search(CHECKER, reply, re.IGNORECASE)
-    if checker:
-        problems.append(f"addresses the checker ({checker.group(0)!r})")
-    return problems
-
-
-def allowed_measurements(facts: RouteFacts) -> dict[str, set[float]]:
-    limitations = " ".join(facts.limitations)
-    km = {facts.min_km, facts.max_km, *numbers(MEASUREMENTS["km"], limitations)}
-    km |= {value for value in facts.requested.model_dump().values() if isinstance(value, float)}
-    if facts.distance_km is not None:
-        km |= {facts.distance_km, round(facts.distance_km, 1), round(facts.distance_km)}
-    minutes: set[float] = set()
-    hours: set[float] = set()
-    if facts.duration_minutes is not None:
-        minutes = {facts.duration_minutes, facts.duration_minutes % 60}
-        hours = {facts.duration_minutes // 60, round(facts.duration_minutes / 60, 1)}
-    return {
-        "km": {round(value, 2) for value in km},
-        "m": numbers(MEASUREMENTS["m"], limitations),
-        "minutes": minutes,
-        "hours": hours,
-        "tries": {float(facts.tries)},
-        "%": numbers(MEASUREMENTS["%"], limitations),
-    }
-
-
-def numbers(pattern: str, text: str) -> set[float]:
-    return {round(float(match), 2) for match in re.findall(pattern, text, re.IGNORECASE)}
 
 
 def agent_case_problems(case: AgentCase, result: AgentResult) -> list[str]:
