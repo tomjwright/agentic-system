@@ -22,6 +22,7 @@ WORKFLOWS = repository_root() / ".github/workflows"
 # The checks main's branch protection requires, plus the two smoke jobs added with deploy.
 REQUIRED_CHECKS = [
     "secrets-scan",
+    "semgrep",
     "feasibility",
     "actionlint",
     "zizmor",

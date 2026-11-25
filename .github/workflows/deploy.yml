@@ -93,7 +93,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           REQUIRED_CHECKS: >-
-            secrets-scan,feasibility,actionlint,zizmor,codeql (python),codeql (actions),api,web,codeql (javascript-typescript),migration-compat,mutation-api,mutation-feasibility,render-smoke,vercel-build
+            secrets-scan,semgrep,feasibility,actionlint,zizmor,codeql (python),codeql (actions),api,web,codeql (javascript-typescript),migration-compat,mutation-api,mutation-feasibility,render-smoke,vercel-build
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}

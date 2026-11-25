@@ -31,6 +31,8 @@ jobs:
       - name: Audit dependencies for known vulnerabilities
         # --disable-pip audits the hashed export as-is, so packages pip-audit itself needs (like pip) are not skipped.
         run: uv export --frozen --no-emit-project | uv run pip-audit --strict --disable-pip -r /dev/stdin
+      - name: Fail on any licence outside this permissive list (GPL and AGPL are not on it)
+        run: uv run pip-licenses --from=mixed --partial-match --with-system --allow-only "MIT;BSD;Apache;ISC;PSF;Python Software Foundation;MPL-2.0;Mozilla Public License 2.0;LGPL;GNU Lesser General Public License;Unlicense"
 
   api:
     runs-on: ubuntu-latest
@@ -64,6 +66,8 @@ jobs:
         run: uv run alembic upgrade head && uv run alembic downgrade base && uv run alembic upgrade head
       - name: Audit dependencies for known vulnerabilities
         run: uv export --frozen --no-emit-project --no-emit-package route-feasibility | uv run pip-audit --strict --disable-pip -r /dev/stdin
+      - name: Fail on any licence outside this permissive list (GPL and AGPL are not on it)
+        run: uv run pip-licenses --from=mixed --partial-match --with-system --allow-only "MIT;BSD;Apache;ISC;PSF;Python Software Foundation;MPL-2.0;Mozilla Public License 2.0;LGPL;GNU Lesser General Public License;Unlicense"
 
   migration-compat:
     # A new migration must not break the release still serving while it runs, or the release a
@@ -177,6 +181,13 @@ jobs:
       - run: npm run lint
       - name: Audit dependencies for known vulnerabilities
         run: npm audit --audit-level=moderate
+      # react-leaflet is Hippocratic-2.1 (not OSI-approved): excluded by name and version, so any
+      # other package, or a new react-leaflet version, must pass the list or be reviewed again.
+      - name: Fail on any production package licence outside this permissive list
+        run: >-
+          npx --yes license-checker-rseidelsohn@4.4.2 --production --excludePrivatePackages --summary
+          --excludePackages "@react-leaflet/core@3.0.0;react-leaflet@5.0.0"
+          --onlyAllow "MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0;0BSD;BlueOak-1.0.0;CC0-1.0;CC-BY-4.0;MPL-2.0;LGPL-3.0-or-later;OFL-1.1"
       - run: npx playwright install --with-deps chromium
       - name: API-to-browser tests (desktop and mobile)
         # A synthetic key in the build environment must not reach the bundle (checked below).
@@ -266,6 +277,20 @@ jobs:
       - run: ops/vercel-cli/node_modules/.bin/vercel build --prod --yes
       - run: scripts/no_provider_secrets.sh .vercel/output
 
+  # Free on private repos: no Semgrep login and no upload to GitHub code scanning.
+  semgrep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+      - name: Fail on any Semgrep finding in the code or the workflows
+        run: >-
+          uvx --python 3.12 semgrep@1.187.0 scan --metrics=off --error
+          --config p/python --config p/typescript --config p/react --config p/github-actions
+          feasibility/src api/src web/src .github
+
   secrets-scan:
     # Scans the whole git history on every run, so no commit range (merge pushes, long PRs) is skipped.
     runs-on: ubuntu-latest
@@ -285,3 +310,6 @@ jobs:
           tar -xzf "${archive}" gitleaks
       - name: Scan all commits for secrets
         run: ./gitleaks git --redact --no-banner .
+      # git log shows no diff for a merge commit, so also scan the files as they are now.
+      - name: Scan the checked-out files for secrets
+        run: ./gitleaks dir --redact --no-banner .
