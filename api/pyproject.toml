@@ -82,10 +82,11 @@ source_paths = [
     "src/route_api/agent.py",
     "src/route_api/agent_models.py",
     "src/route_api/auth.py",
+    "src/route_api/fact_check.py",
     "src/route_api/restrictions.py",
     "src/route_api/promote.py",
     "src/route_api/retention.py",
     "src/route_api/migrate.py",
 ]
 pytest_add_cli_args_test_selection = ["tests/"]
-also_copy = ["src/route_api/", "migrations/", "alembic.ini"]
+also_copy = ["src/route_api/", "migrations/", "alembic.ini", "evals/"]
