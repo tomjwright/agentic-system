@@ -15,6 +15,7 @@ dev = [
     "mutmut==3.8.1",
     "mypy>=1.11",
     "pip-audit>=2.7",
+    "pip-licenses>=5",
     "pre-commit>=3.8",
     "pytest>=8.3",
     "pytest-cov>=6",
