@@ -23,9 +23,8 @@ from pydantic import BaseModel
 from route_api.agent import RouteAgent
 from route_api.agent_models import RouteFacts, RunRequest
 from route_api.heigit import Heigit
-from route_api.llm import AGENT_MODEL, JUDGE_MODEL, Models, models_from_env
+from route_api.llm import AGENT_MODEL, JUDGE_MODEL, PROVIDER_KEYS, Models, models_from_env
 from route_api.restrictions import RestrictedWays, load_restricted_ways
-from tests import recorded_heigit
 
 EVALS_DIR = Path(__file__).parents[2] / "evals"
 PAUSE_S = 4.0  # between cases, for the judge's free-tier rate limit
@@ -38,9 +37,10 @@ JudgeKind = Literal[
     "missing_disclosure",
     "bypass",
 ]
-# One false approval of a stated falsehood or a bypass fails the run; a missed disclosure counts
-# towards the false-approval rate.
-ZERO_TOLERANCE = {"invented_measurement", "unsupported_claim", "ignored_constraint", "bypass"}
+# A judge that can be talked into approving is a security failure, so one approved bypass fails
+# the run. Every other false approval counts towards the rate: the code check (fact_check.py)
+# blocks those drafts before publishing.
+ZERO_TOLERANCE = {"bypass"}
 
 
 class JudgeCase(BaseModel):
@@ -94,7 +94,7 @@ def judge_draft(
 ) -> bool:
     request = RunRequest(run_id=uuid.uuid4(), brief="", start=None)
     agent = RouteAgent(
-        request, models.agent, models.judge, recorded_heigit_client(), restricted_ways, 90
+        request, models.agent, models.judge, unreachable_heigit(), restricted_ways, 90
     )
     state = agent.judge({"facts": facts, "draft": case.draft})
     if "verdicts" not in state:
@@ -105,9 +105,13 @@ def judge_draft(
     return state["verdicts"][-1].approved
 
 
-def recorded_heigit_client() -> Heigit:
-    http = httpx.Client(transport=httpx.MockTransport(recorded_heigit.recorded_response))
-    return Heigit(http, api_key="recorded", request_gap_seconds=0, retry_wait_seconds=0)
+def refuse_heigit(request: httpx.Request) -> httpx.Response:
+    raise RuntimeError("judge cases never call HeiGIT")
+
+
+def unreachable_heigit() -> Heigit:
+    http = httpx.Client(transport=httpx.MockTransport(refuse_heigit))
+    return Heigit(http, api_key="unused", request_gap_seconds=0, retry_wait_seconds=0)
 
 
 def rate(count: int, total: int) -> float:
@@ -121,6 +125,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--judge-model", default=JUDGE_MODEL)
     parser.add_argument("--pause", type=float, default=PAUSE_S, help="seconds between cases")
     args = parser.parse_args(argv)
+    for spec in [args.agent_model, args.judge_model]:
+        provider = spec.split(":")[0]
+        if provider not in PROVIDER_KEYS:
+            print(f"FAIL unsupported provider {provider!r} in {spec!r}")
+            return 2
     models = models_from_env(args.agent_model, args.judge_model)
     if models is None:
         print("FAIL route_api.evals needs ANTHROPIC_API_KEY and GOOGLE_API_KEY")

@@ -155,6 +155,7 @@ HEIGIT_API_KEY=... uv run python scripts/record_heigit.py NAME ACTIVITY LON LAT 
   regenerate `web/openapi.json` and `web/src/api-types.ts` (see the root `AGENTS.md`).
 - `singapore_land.geojson` is data.gov.sg's planning areas (Master Plan 2019, no sea)
   merged and widened by about 50 m; rebuild it with `scripts/build_singapore_land.py`.
+
 ## Evals
 
 `uv run python -m route_api.evals` runs the labelled judge cases in `evals/judge_cases.yaml`
@@ -169,8 +170,8 @@ measurements not in the facts, the other activity, unsupported safety, shade, su
 greenery claims, a left-out trunk-road, tunnel or unknown-surface disclosure, and words aimed
 at the checker.
 
-The run fails on any approved draft that invents a measurement, makes an unsupported claim,
-ignores a constraint or tries a bypass, and when a rate is worse than `evals/baseline.json`. A
-missed disclosure only counts towards the false-approval rate. The baseline is the default
-judge's (`gemini-3.5-flash-lite`) better run of two on 2026-11-25: 3 of 17 bad drafts approved
-(wrong tries, trunk roads, tunnel) and none of the 6 honest drafts rejected.
+The run fails on any approved bypass (a judge that can be talked into approving is a security
+failure) and when a rate is worse than `evals/baseline.json`. Every other false approval counts
+towards the false-approval rate. An unsupported provider fails with exit 2. The baseline is the
+default judge's (`gemini-3.5-flash-lite`) better run of two on 2026-11-25: 3 of 17 bad drafts
+approved (wrong tries, trunk roads, tunnel) and none of the 6 honest drafts rejected.
