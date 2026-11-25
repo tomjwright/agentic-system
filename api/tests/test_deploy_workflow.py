@@ -22,6 +22,7 @@ WORKFLOWS = repository_root() / ".github/workflows"
 # The checks main's branch protection requires, plus the two smoke jobs added with deploy.
 REQUIRED_CHECKS = [
     "secrets-scan",
+    "semgrep",
     "feasibility",
     "actionlint",
     "zizmor",
@@ -106,10 +107,15 @@ def test_it_uses_the_protected_environment_and_checks_out_only_the_trusted_commi
     assert checkout["with"] == {"ref": "${{ env.COMMIT_SHA }}", "persist-credentials": False}
 
 
-def test_its_token_may_only_read_code_and_check_results() -> None:
+def test_its_token_may_only_read_code_and_check_results_and_sign_provenance() -> None:
     workflow = load("deploy.yml")
     assert workflow["permissions"] == {"contents": "read", "checks": "read"}
-    assert "permissions" not in promote_job()
+    assert promote_job()["permissions"] == {
+        "contents": "read",
+        "checks": "read",
+        "id-token": "write",
+        "attestations": "write",
+    }
 
 
 def test_one_deploy_at_a_time_and_a_running_one_is_never_cancelled() -> None:
@@ -129,14 +135,19 @@ def test_the_page_is_built_scanned_and_staged_before_promotion() -> None:
     steps = promote_job()["steps"]
     build = step_named("Build the page")
     scan = step_named("No provider key")
+    checksum = step_named("Checksum every built file")
+    sign = step_named("Sign build provenance")
     stage = step_named("Stage the page")
     install_browser_tests = step_named("Install the staged browser test")
     promote = step_named("Promote")
-    assert build < scan < stage < install_browser_tests < promote == len(steps) - 1
+    assert build < scan < checksum < sign < stage < install_browser_tests < promote
+    assert promote == len(steps) - 1
     assert "build --prod" in steps[build]["run"]
     assert "VERCEL_TOKEN" not in steps[build].get("env", {})
     assert steps[scan]["run"] == "scripts/no_provider_secrets.sh .vercel/output"
     assert "deploy --prebuilt --prod --skip-domain" in steps[stage]["run"]
+    assert steps[sign]["if"] == "vars.ATTESTATIONS_ENABLED == 'true'"
+    assert steps[sign]["with"] == {"subject-checksums": "vercel-output.sha256"}
 
 
 def test_promotion_and_its_rollback_run_as_one_unconditional_step() -> None:
@@ -147,8 +158,10 @@ def test_promotion_and_its_rollback_run_as_one_unconditional_step() -> None:
         "uv run --no-sync python -m route_api.promote",
     ]
     assert promote["env"]["STAGED_URL"] == "${{ steps.stage.outputs.url }}"
-    for step in job["steps"]:
-        assert "if" not in step
+    # Only signing is optional (private repos need Enterprise Cloud), and it runs before staging.
+    for index, step in enumerate(job["steps"]):
+        if index != step_named("Sign build provenance"):
+            assert "if" not in step
         assert "continue-on-error" not in step
     # Longer than promote.py's own waits, so the job is never cut off before rolling back.
     assert job["timeout-minutes"] >= 150

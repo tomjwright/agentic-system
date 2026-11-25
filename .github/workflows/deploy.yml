@@ -37,20 +37,25 @@ jobs:
     # so it is never cut off between promoting and rolling back.
     timeout-minutes: 150
     environment: production
+    permissions:
+      contents: read
+      checks: read
+      id-token: write
+      attestations: write
     env:
       COMMIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
       VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
       VERCEL_CLI: ${{ github.workspace }}/ops/vercel-cli/node_modules/.bin/vercel
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.COMMIT_SHA }}
           persist-credentials: false
-      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
       - name: Install the Vercel CLI that ops/vercel-cli/package-lock.json pins
@@ -65,6 +70,14 @@ jobs:
           "$VERCEL_CLI" build --prod
       - name: No provider key in the built page
         run: scripts/no_provider_secrets.sh .vercel/output
+      - name: Checksum every built file
+        run: find .vercel/output -type f -print0 | sort -z | xargs -0 sha256sum > vercel-output.sha256
+      # Private repos need GitHub Enterprise Cloud for attestations, so this runs only when enabled.
+      - name: Sign build provenance for the exact files that are staged
+        if: vars.ATTESTATIONS_ENABLED == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: vercel-output.sha256
       - name: Stage the page (not yet live)
         id: stage
         env:
@@ -80,7 +93,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           REQUIRED_CHECKS: >-
-            secrets-scan,feasibility,actionlint,zizmor,codeql (python),codeql (actions),api,web,codeql (javascript-typescript),migration-compat,mutation-api,mutation-feasibility,render-smoke,vercel-build
+            secrets-scan,semgrep,feasibility,actionlint,zizmor,codeql (python),codeql (actions),api,web,codeql (javascript-typescript),migration-compat,mutation-api,mutation-feasibility,render-smoke,vercel-build
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
