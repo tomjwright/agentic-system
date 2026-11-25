@@ -103,14 +103,16 @@ test("an assistant the API has not configured says so and the form still works",
   await page.route("**/agent-runs", (route) =>
     route.fulfill(agentError(503, "agent_not_configured", "The route assistant is not configured")),
   );
+  await page.getByRole("button", { name: "Generate loop" }).click();
+  await expect(page.locator(".result")).toContainText("5.26 km loop");
   const assistant = page.locator(".assistant");
   await assistant.getByLabel("Ask the route assistant").fill("a 5k run");
   await assistant.getByRole("button", { name: "Ask", exact: true }).click();
 
   await expect(assistant).toContainText("The route assistant is not set up here.");
   await expect(assistant.getByLabel("Ask the route assistant")).toHaveCount(0);
-  await page.getByRole("button", { name: "Generate loop" }).click();
   await expect(page.locator(".result")).toContainText("5.26 km loop");
+  await expect(page.getByRole("link", { name: "Download GPX" })).toBeVisible();
 });
 
 test("a failed assistant run is shown as an error", async ({ page }) => {

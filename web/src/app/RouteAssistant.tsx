@@ -7,7 +7,7 @@ import { type AgentAnswer, type AgentStep, ApiError, askAssistant, type Distance
 type Props = {
   routeRequestId: string;
   distance: Distance | null;
-  // Called with null when a question is sent, then with the answer's stored run, if any.
+  // Called once an answer arrives, with its stored run or null; a failed ask keeps the current route.
   onRun: (generationRunId: string | null) => void;
 };
 
@@ -63,7 +63,6 @@ export default function RouteAssistant({ routeRequestId, distance, onRun }: Prop
     setAsking(true);
     setError(null);
     setAnswer(null);
-    onRun(null);
     try {
       const found = await askAssistant(routeRequestId, brief.trim(), distance);
       setAnswer(found);
