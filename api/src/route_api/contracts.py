@@ -273,6 +273,26 @@ class AgentRun(BaseModel):
     finished_at: datetime | None
 
 
+class AgentStep(BaseModel):
+    """One step the run took, in order. Only what code recorded, never model text."""
+
+    name: Literal[
+        "read_request",
+        "asked_clarification",
+        "generated_route",
+        "drafted",
+        "judged",
+        "repaired",
+        "fallback",
+    ]
+    tries: int | None = Field(default=None, description="generated_route: loops tried")
+    approved: bool | None = Field(default=None, description="judged: the judge's decision")
+    reason: str | None = Field(
+        default=None, description="asked_clarification or fallback: why, as a code"
+    )
+
+
 class AgentAnswer(BaseModel):
     run: AgentRun
     message: str = Field(description="An approved draft or the factual fallback; not stored")
+    steps: list[AgentStep]

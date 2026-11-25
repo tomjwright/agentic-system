@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from route_api.agent_models import AgentResult
-from route_api.contracts import AgentRun
+from route_api.contracts import AgentRun, AgentStep
 from route_api.db import AgentRunRecord
 from route_api.llm import Models
 
@@ -80,3 +80,26 @@ def to_agent_run(run: AgentRunRecord) -> AgentRun:
         started_at=run.started_at,
         finished_at=run.finished_at,
     )
+
+
+def answer_steps(result: AgentResult) -> list[AgentStep]:
+    """The steps the run took, rebuilt from what it recorded: each draft is followed by its
+    judgment, and a judge that did not answer leaves a draft without one."""
+    steps = [AgentStep(name="read_request")]
+    if result.clarification is not None:
+        steps.append(AgentStep(name="asked_clarification", reason=result.clarification.reason))
+    if result.facts is not None:
+        steps.append(AgentStep(name="generated_route", tries=result.facts.tries))
+    drafts = len(result.verdicts)
+    if result.fallback_reason == "judge_unavailable":
+        drafts += 1
+    for position in range(drafts):
+        if position == 0:
+            steps.append(AgentStep(name="drafted"))
+        else:
+            steps.append(AgentStep(name="repaired"))
+        if position < len(result.verdicts):
+            steps.append(AgentStep(name="judged", approved=result.verdicts[position].approved))
+    if result.fallback_reason is not None:
+        steps.append(AgentStep(name="fallback", reason=result.fallback_reason))
+    return steps

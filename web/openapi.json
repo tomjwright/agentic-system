@@ -1479,12 +1479,20 @@
             "type": "string",
             "title": "Message",
             "description": "An approved draft or the factual fallback; not stored"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/AgentStep"
+            },
+            "type": "array",
+            "title": "Steps"
           }
         },
         "type": "object",
         "required": [
           "run",
-          "message"
+          "message",
+          "steps"
         ],
         "title": "AgentAnswer"
       },
@@ -1663,6 +1671,65 @@
           "brief"
         ],
         "title": "AgentRunCreate"
+      },
+      "AgentStep": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": [
+              "read_request",
+              "asked_clarification",
+              "generated_route",
+              "drafted",
+              "judged",
+              "repaired",
+              "fallback"
+            ],
+            "title": "Name"
+          },
+          "tries": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tries",
+            "description": "generated_route: loops tried"
+          },
+          "approved": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved",
+            "description": "judged: the judge's decision"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "asked_clarification or fallback: why, as a code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "AgentStep",
+        "description": "One step the run took, in order. Only what code recorded, never model text."
       },
       "Candidate": {
         "properties": {

@@ -312,6 +312,8 @@ export interface components {
              * @description An approved draft or the factual fallback; not stored
              */
             message: string;
+            /** Steps */
+            steps: components["schemas"]["AgentStep"][];
         };
         /**
          * AgentRun
@@ -378,6 +380,32 @@ export interface components {
              * @description The form's distance, if any
              */
             distance?: (components["schemas"]["DistanceTarget"] | components["schemas"]["DistanceRange"]) | null;
+        };
+        /**
+         * AgentStep
+         * @description One step the run took, in order. Only what code recorded, never model text.
+         */
+        AgentStep: {
+            /**
+             * Name
+             * @enum {string}
+             */
+            name: "read_request" | "asked_clarification" | "generated_route" | "drafted" | "judged" | "repaired" | "fallback";
+            /**
+             * Tries
+             * @description generated_route: loops tried
+             */
+            tries?: number | null;
+            /**
+             * Approved
+             * @description judged: the judge's decision
+             */
+            approved?: boolean | null;
+            /**
+             * Reason
+             * @description asked_clarification or fallback: why, as a code
+             */
+            reason?: string | null;
         };
         /** Candidate */
         Candidate: {

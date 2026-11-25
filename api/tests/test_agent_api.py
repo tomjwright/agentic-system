@@ -38,6 +38,12 @@ AGENT_MODEL = "anthropic:claude-haiku-4-5"
 JUDGE_MODEL = "google_genai:gemini-3.5-flash"
 
 
+def step(
+    name: str, tries: int | None = None, approved: bool | None = None, reason: str | None = None
+) -> dict[str, Any]:
+    return {"name": name, "tries": tries, "approved": approved, "reason": reason}
+
+
 def fake_models(agent_replies: list[Any], judge_replies: list[Any]) -> Models:
     return Models(
         agent=FakeModel(replies=agent_replies),
@@ -92,6 +98,12 @@ def test_an_approved_answer_comes_with_the_stored_route(clean_engine: Engine) ->
     assert run["approvals"] == [True]
     assert run["repairs"] == 0
     assert (run["agent_model"], run["judge_model"]) == (AGENT_MODEL, JUDGE_MODEL)
+    assert answer["steps"] == [
+        step("read_request"),
+        step("generated_route", tries=2),
+        step("drafted"),
+        step("judged", approved=True),
+    ]
     generation_run = api.get(f"/api/runs/{run['generation_run_id']}", headers=as_owner(api, TOM))
     assert generation_run.json()["status"] == "succeeded"
     assert generation_run.json()["distance"] == {"kind": "target", "target_km": 5.0}
@@ -125,6 +137,12 @@ def test_a_missing_distance_is_asked_about_without_a_route(clean_engine: Engine)
         "approved_draft",
         None,
     )
+    assert response.json()["steps"] == [
+        step("read_request"),
+        step("asked_clarification", reason="missing_distance"),
+        step("drafted"),
+        step("judged", approved=True),
+    ]
     assert heigit.requests == []
 
 
@@ -146,9 +164,58 @@ def test_two_rejections_answer_with_the_factual_fallback(clean_engine: Engine) -
     )
     assert (run["approvals"], run["repairs"]) == ([False, False], 1)
     assert run["generation_run_id"] is not None
+    assert answer["steps"] == [
+        step("read_request"),
+        step("generated_route", tries=2),
+        step("drafted"),
+        step("judged", approved=False),
+        step("repaired"),
+        step("judged", approved=False),
+        step("fallback", reason="rejected_twice"),
+    ]
     with clean_engine.connect() as connection:
         stored = connection.execute(text("SELECT verdicts FROM agent_runs")).scalar_one()
     assert stored == [REJECTED.model_dump(), REJECTED.model_dump()]
+
+
+@pytest.mark.parametrize(
+    ("agent_replies", "judge_replies", "last_steps"),
+    [
+        (
+            [TimeoutError()],
+            [],
+            [step("read_request"), step("fallback", reason="interpretation_unavailable")],
+        ),
+        (
+            [RUN_5K, GOOD_DRAFT],
+            [TimeoutError()],
+            [step("drafted"), step("fallback", reason="judge_unavailable")],
+        ),
+        (
+            [RUN_5K, BAD_DRAFT, GOOD_DRAFT],
+            [REJECTED, TimeoutError()],
+            [step("repaired"), step("fallback", reason="judge_unavailable")],
+        ),
+        (
+            [RUN_5K, BAD_DRAFT, TimeoutError()],
+            [REJECTED],
+            [step("judged", approved=False), step("fallback", reason="draft_unavailable")],
+        ),
+    ],
+)
+def test_the_steps_end_where_the_run_fell_back(
+    clean_engine: Engine,
+    agent_replies: list[Any],
+    judge_replies: list[Any],
+    last_steps: list[dict[str, Any]],
+) -> None:
+    api = agent_api(clean_engine, fake_models(agent_replies, judge_replies))
+    request_id = confirm_start(api, AVENUE_SOUTH_BLOCK_11)
+
+    steps = ask(api, request_id).json()["steps"]
+
+    assert steps[0] == step("read_request")
+    assert steps[-2:] == last_steps
 
 
 def test_without_model_keys_the_agent_is_off_and_asks_nothing(clean_engine: Engine) -> None:
