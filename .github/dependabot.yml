@@ -29,6 +29,15 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    # Majors these can't take yet: openapi-typescript needs TypeScript 5, eslint-config-next's
+    # React plugin needs ESLint 9, and @types/node follows the Node 24 the page runs on.
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       dev:
         dependency-type: development
