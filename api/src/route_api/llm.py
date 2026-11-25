@@ -25,19 +25,21 @@ class Models:
 
 
 AGENT_MODEL = "anthropic:claude-haiku-4-5"
-AGENT_KEY = "ANTHROPIC_API_KEY"
 JUDGE_MODEL = "google_genai:gemini-3.5-flash"
-JUDGE_KEY = "GOOGLE_API_KEY"
+PROVIDER_KEYS = {"anthropic": "ANTHROPIC_API_KEY", "google_genai": "GOOGLE_API_KEY"}
 
 
-def models_from_env() -> Models | None:
-    """Both models when ANTHROPIC_API_KEY and GOOGLE_API_KEY are set, else None."""
-    agent_key = os.environ.get(AGENT_KEY)
-    judge_key = os.environ.get(JUDGE_KEY)
-    for name, key in [(AGENT_KEY, agent_key), (JUDGE_KEY, judge_key)]:
+def models_from_env(agent_spec: str = AGENT_MODEL, judge_spec: str = JUDGE_MODEL) -> Models | None:
+    """Both models when their providers' keys are set, else None. The evals pass other specs
+    to compare candidate models."""
+    keys = []
+    for spec in [agent_spec, judge_spec]:
+        name = PROVIDER_KEYS.get(spec.split(":")[0], f"a key for {spec}")
+        key = os.environ.get(name)
         if not key:
             log_event("agent_not_configured", missing=name)
             return None
-    agent = init_chat_model(AGENT_MODEL, temperature=0, api_key=agent_key)
-    judge = init_chat_model(JUDGE_MODEL, temperature=0, api_key=judge_key)
-    return Models(agent=agent, judge=judge, agent_name=AGENT_MODEL, judge_name=JUDGE_MODEL)
+        keys.append(key)
+    agent = init_chat_model(agent_spec, temperature=0, api_key=keys[0])
+    judge = init_chat_model(judge_spec, temperature=0, api_key=keys[1])
+    return Models(agent=agent, judge=judge, agent_name=agent_spec, judge_name=judge_spec)
