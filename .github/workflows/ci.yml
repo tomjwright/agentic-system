@@ -277,6 +277,20 @@ jobs:
       - run: ops/vercel-cli/node_modules/.bin/vercel build --prod --yes
       - run: scripts/no_provider_secrets.sh .vercel/output
 
+  # Free on private repos: no Semgrep login and no upload to GitHub code scanning.
+  semgrep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
+      - name: Fail on any Semgrep finding in the code or the workflows
+        run: >-
+          uvx --python 3.12 semgrep@1.187.0 scan --metrics=off --error
+          --config p/python --config p/typescript --config p/react --config p/github-actions
+          feasibility/src api/src web/src .github
+
   secrets-scan:
     # Scans the whole git history on every run, so no commit range (merge pushes, long PRs) is skipped.
     runs-on: ubuntu-latest
