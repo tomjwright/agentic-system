@@ -15,7 +15,8 @@ import {
   searchPlaces,
 } from "@/api";
 
-import RunPanel from "./RunPanel";
+import RunPanel, { type FirstAnswer } from "./RunPanel";
+import StartAssistant from "./StartAssistant";
 
 // Leaflet needs the browser's window, so the map is only rendered client-side.
 const StartMap = dynamic(() => import("./StartMap"), { ssr: false });
@@ -53,6 +54,7 @@ export default function StartPicker() {
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<RouteRequest | null>(null);
   const [route, setRoute] = useState<[number, number][] | null>(null);
+  const [first, setFirst] = useState<FirstAnswer | null>(null);
   const trimmed = query.trim();
 
   useEffect(() => {
@@ -79,6 +81,7 @@ export default function StartPicker() {
   function choose(next: Selection) {
     setSelection(next);
     setConfirmed(null);
+    setFirst(null);
     setRoute(null);
     setConfirmError(null);
   }
@@ -102,12 +105,25 @@ export default function StartPicker() {
     setRoute(null);
     try {
       const created = await createRouteRequest({ activity, start });
+      setFirst(null);
       setConfirmed(await getRouteRequest(created.id));
     } catch (error) {
       setConfirmError(describeError(error));
     } finally {
       setConfirming(false);
     }
+  }
+
+  function confirmFromAssistant(
+    routeRequest: RouteRequest,
+    candidate: Candidate,
+    answered: FirstAnswer,
+  ) {
+    setSelection({ kind: "named", query: routeRequest.start.query ?? "", candidate });
+    setActivity(routeRequest.activity);
+    setFirst(answered);
+    setConfirmed(routeRequest);
+    setRoute(answered.route?.geometry.coordinates ?? null);
   }
 
   const current = search !== null && search.query === trimmed ? search : null;
@@ -162,6 +178,8 @@ export default function StartPicker() {
             </ul>
           </>
         )}
+
+        {!confirmed && <StartAssistant onConfirmed={confirmFromAssistant} />}
 
         {selection && (
           <div className="selection">
@@ -229,7 +247,7 @@ export default function StartPicker() {
           </div>
         )}
 
-        {confirmed && <RunPanel key={confirmed.id} routeRequest={confirmed} onRoute={setRoute} />}
+        {confirmed && <RunPanel key={confirmed.id} routeRequest={confirmed} first={first} onRoute={setRoute} />}
       </section>
       <div className="map-wrap">
         <StartMap point={selectionPoint(selection)} route={route} onPick={pickOnMap} />

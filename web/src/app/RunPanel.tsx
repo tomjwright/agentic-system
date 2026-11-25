@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import {
+  type AgentAnswer,
   ApiError,
   type Distance,
   type GenerationRun,
@@ -26,8 +27,16 @@ const ROAD_OUTCOMES = {
   on_disclosed_road: "rides on it",
 };
 
+// The assistant's answer on a start just confirmed from its choices, with the run it made.
+export type FirstAnswer = {
+  answer: AgentAnswer;
+  run: GenerationRun | null;
+  route: SelectedRoute | null;
+};
+
 type Props = {
   routeRequest: RouteRequest;
+  first: FirstAnswer | null;
   onRoute: (coordinates: [number, number][] | null) => void;
 };
 
@@ -65,7 +74,7 @@ function readDistance(
   return { kind: "range", min_km: minKm, max_km: maxKm };
 }
 
-export default function RunPanel({ routeRequest, onRoute }: Props) {
+export default function RunPanel({ routeRequest, first, onRoute }: Props) {
   const [mode, setMode] = useState("target");
   const activity = routeRequest.activity;
   const [MIN_KM, MAX_KM] = LIMITS_KM[activity];
@@ -74,8 +83,8 @@ export default function RunPanel({ routeRequest, onRoute }: Props) {
   const [high, setHigh] = useState("");
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [run, setRun] = useState<GenerationRun | null>(null);
-  const [route, setRoute] = useState<SelectedRoute | null>(null);
+  const [run, setRun] = useState<GenerationRun | null>(first?.run ?? null);
+  const [route, setRoute] = useState<SelectedRoute | null>(first?.route ?? null);
   const formDistance = readDistance(activity, mode, target, low, high);
   // Kept after a lost response, so "Generate" again resolves to the run already recorded.
   const [pending, setPending] = useState<{
@@ -227,6 +236,7 @@ export default function RunPanel({ routeRequest, onRoute }: Props) {
         routeRequestId={routeRequest.id}
         distance={typeof formDistance === "string" ? null : formDistance}
         onRun={showAssistantRun}
+        firstAnswer={first?.answer ?? null}
       />
       {run?.status === "failed" && (
         <p className="error" role="alert">

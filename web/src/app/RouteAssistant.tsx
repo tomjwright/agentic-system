@@ -9,6 +9,8 @@ type Props = {
   distance: Distance | null;
   // Called once an answer arrives, with its stored run or null; a failed ask keeps the current route.
   onRun: (generationRunId: string | null) => void;
+  // An answer already given on this start, from the assistant that found it.
+  firstAnswer: AgentAnswer | null;
 };
 
 function distanceText(distance: Distance): string {
@@ -18,7 +20,7 @@ function distanceText(distance: Distance): string {
   return `${distance.min_km}-${distance.max_km} km`;
 }
 
-function stepText(step: AgentStep): string {
+export function stepText(step: AgentStep): string {
   const reason = (step.reason ?? "").replaceAll("_", " ");
   if (step.name === "read_request") {
     return "Read your message";
@@ -47,10 +49,10 @@ function stepText(step: AgentStep): string {
   return `Answered from the measured facts instead: ${reason}`;
 }
 
-export default function RouteAssistant({ routeRequestId, distance, onRun }: Props) {
+export default function RouteAssistant({ routeRequestId, distance, onRun, firstAnswer }: Props) {
   const [brief, setBrief] = useState("");
   const [asking, setAsking] = useState(false);
-  const [answer, setAnswer] = useState<AgentAnswer | null>(null);
+  const [answer, setAnswer] = useState<AgentAnswer | null>(firstAnswer);
   const [error, setError] = useState<string | null>(null);
   const [notSetUp, setNotSetUp] = useState(false);
   const clarifying = answer?.run.kind === "clarification";

@@ -104,6 +104,7 @@ export function gpxUrl(runId: string): string {
 
 export type AgentAnswer = components["schemas"]["AgentAnswer"];
 export type AgentStep = components["schemas"]["AgentStep"];
+export type StartChoices = components["schemas"]["StartChoices"];
 
 // One synchronous request: the answer comes back once it is judged (or written from facts).
 export function askAssistant(
@@ -115,4 +116,9 @@ export function askAssistant(
     method: "POST",
     body: JSON.stringify({ brief, distance }),
   });
+}
+
+// Before a start is confirmed: lists every match for the start the message names, makes no route.
+export function askAssistantWithoutStart(brief: string): Promise<AgentAnswer> {
+  return call("/api/agent-runs", { method: "POST", body: JSON.stringify({ brief }) });
 }

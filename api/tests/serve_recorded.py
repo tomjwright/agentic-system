@@ -37,10 +37,16 @@ AGENT_SCRIPT = {
     "a 10k run": Interpretation(
         activity="running", distance=DistanceTarget(kind="target", target_km=10)
     ),
+    "a 5k run from Avenue South Residence": Interpretation(
+        activity="running",
+        distance=DistanceTarget(kind="target", target_km=5),
+        start_place="Avenue South Residence",
+    ),
     "5k is fine": Interpretation(
         activity="running", distance=DistanceTarget(kind="target", target_km=5)
     ),
     '"reason":"conflict"': "Your form says 5 km but your message says 10 km. Which would you like?",
+    '"reason":"confirm_start"': "Which Avenue South Residence block do you start from?",
     '"outcome":"route"': "Here is a 5.26 km running loop from Avenue South Residence.",
 }
 JUDGE_SCRIPT = {"Reply to check": Verdict(approved=True, reasons=[])}
