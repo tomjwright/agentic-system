@@ -37,6 +37,11 @@ jobs:
     # so it is never cut off between promoting and rolling back.
     timeout-minutes: 150
     environment: production
+    permissions:
+      contents: read
+      checks: read
+      id-token: write
+      attestations: write
     env:
       COMMIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
       VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
@@ -65,6 +70,14 @@ jobs:
           "$VERCEL_CLI" build --prod
       - name: No provider key in the built page
         run: scripts/no_provider_secrets.sh .vercel/output
+      - name: Checksum every built file
+        run: find .vercel/output -type f -print0 | sort -z | xargs -0 sha256sum > vercel-output.sha256
+      # Private repos need GitHub Enterprise Cloud for attestations, so this runs only when enabled.
+      - name: Sign build provenance for the exact files that are staged
+        if: vars.ATTESTATIONS_ENABLED == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: vercel-output.sha256
       - name: Stage the page (not yet live)
         id: stage
         env:

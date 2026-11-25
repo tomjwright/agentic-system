@@ -207,3 +207,6 @@ The agent token has no admin rights, so nothing here is applied by an agent. The
   `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `RENDER_SERVICE_ID`, `PRODUCTION_URL`.
 - On Render, set `SMOKE_TOKEN_SHA256` and `E2E_TOKEN_SHA256` to the SHA-256 (hex) of the
   two tokens.
+- Optional: repository variable `ATTESTATIONS_ENABLED=true` makes each deploy sign build
+  provenance for the exact files it stages (`gh attestation verify <file> --repo
+  tomjwright/agentic-system` checks one). Private repos need GitHub Enterprise Cloud for it.
