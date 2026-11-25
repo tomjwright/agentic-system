@@ -73,7 +73,7 @@ cd ../web && npm ci && npm run dev    # http://localhost:3000, forwards /api to 
 
 The route agent (`POST /api/route-requests/{id}/agent-runs`, `route_api/agent.py`) also needs
 `ANTHROPIC_API_KEY` (its model, `anthropic:claude-haiku-4-5`) and `GOOGLE_API_KEY` (its judge,
-`google_genai:gemini-3.5-flash`). Without both it answers 503 `agent_not_configured`; the rest
+`google_genai:gemini-3.5-flash-lite`). Without both it answers 503 `agent_not_configured`; the rest
 of the API is unaffected. It stores how each answer was made and judged, never the brief or
 the answer, and a route it makes is an ordinary stored run.
 Its answer lists the `steps` the run took (read the request, asked a clarification, generated a
@@ -155,3 +155,22 @@ HEIGIT_API_KEY=... uv run python scripts/record_heigit.py NAME ACTIVITY LON LAT 
   regenerate `web/openapi.json` and `web/src/api-types.ts` (see the root `AGENTS.md`).
 - `singapore_land.geojson` is data.gov.sg's planning areas (Master Plan 2019, no sea)
   merged and widened by about 50 m; rebuild it with `scripts/build_singapore_land.py`.
+## Evals
+
+`uv run python -m route_api.evals` runs the labelled judge cases in `evals/judge_cases.yaml`
+with the real judge, one at a time. Each case is fixed `RouteFacts`, a draft and the right
+verdict. It reports false approvals (a bad draft approved) and false rejections (an honest one
+rejected). It needs both models' keys and fails (exit 2) without them. `--agent-model` and
+`--judge-model` take any `provider:model` spec (`anthropic` or `google_genai`) to compare
+candidates on the same cases.
+
+Each draft's label agrees with a code check, `contradictions` in `fact_check.py`:
+measurements not in the facts, the other activity, unsupported safety, shade, surface or
+greenery claims, a left-out trunk-road, tunnel or unknown-surface disclosure, and words aimed
+at the checker.
+
+The run fails on any approved draft that invents a measurement, makes an unsupported claim,
+ignores a constraint or tries a bypass, and when a rate is worse than `evals/baseline.json`. A
+missed disclosure only counts towards the false-approval rate. The baseline is the default
+judge's (`gemini-3.5-flash-lite`) better run of two on 2026-11-25: 3 of 17 bad drafts approved
+(wrong tries, trunk roads, tunnel) and none of the 6 honest drafts rejected.

@@ -35,7 +35,7 @@ REJECTED = Verdict(approved=False, reasons=["it says 7 km; the route is 5.26 km"
 GOOD_DRAFT = "Here is a 5.26 km running loop from your start."
 BAD_DRAFT = "Here is a 7 km running loop, fully shaded and safe."
 AGENT_MODEL = "anthropic:claude-haiku-4-5"
-JUDGE_MODEL = "google_genai:gemini-3.5-flash"
+JUDGE_MODEL = "google_genai:gemini-3.5-flash-lite"
 
 
 def step(
