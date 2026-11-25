@@ -14,6 +14,8 @@ import {
   startRun,
 } from "@/api";
 
+import RouteAssistant from "./RouteAssistant";
+
 const POLL_MS = 2000;
 // The API's per-activity limits (route_selection.DISTANCE_LIMITS_KM).
 const LIMITS_KM = { running: [1, 50], road_cycling: [5, 100] };
@@ -74,11 +76,41 @@ export default function RunPanel({ routeRequest, onRoute }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [run, setRun] = useState<GenerationRun | null>(null);
   const [route, setRoute] = useState<SelectedRoute | null>(null);
+  const formDistance = readDistance(activity, mode, target, low, high);
   // Kept after a lost response, so "Generate" again resolves to the run already recorded.
   const [pending, setPending] = useState<{
     key: string;
     operationId: string;
   } | null>(null);
+
+  // Draws the run's stored selected route; never anything an assistant wrote.
+  async function showRun(found: GenerationRun) {
+    setRun(found);
+    if (found.status === "succeeded") {
+      const selected = await getSelectedRoute(found.id);
+      setRoute(selected);
+      onRoute(selected.geometry.coordinates);
+    }
+  }
+
+  async function showAssistantRun(runId: string | null) {
+    setError(null);
+    setRun(null);
+    setRoute(null);
+    onRoute(null);
+    if (runId === null) {
+      return;
+    }
+    try {
+      await showRun(await getRun(runId));
+    } catch (caught) {
+      if (caught instanceof ApiError) {
+        setError(caught.message);
+      } else {
+        setError("The route API could not be reached.");
+      }
+    }
+  }
 
   async function generate() {
     const distance = readDistance(activity, mode, target, low, high);
@@ -104,12 +136,7 @@ export default function RunPanel({ routeRequest, onRoute }: Props) {
         found = await getRun(found.id);
       }
       setPending(null);
-      setRun(found);
-      if (found.status === "succeeded") {
-        const selected = await getSelectedRoute(found.id);
-        setRoute(selected);
-        onRoute(selected.geometry.coordinates);
-      }
+      await showRun(found);
     } catch (caught) {
       if (caught instanceof ApiError) {
         setPending(null);
@@ -196,6 +223,11 @@ export default function RunPanel({ routeRequest, onRoute }: Props) {
           {error}
         </p>
       )}
+      <RouteAssistant
+        routeRequestId={routeRequest.id}
+        distance={typeof formDistance === "string" ? null : formDistance}
+        onRun={showAssistantRun}
+      />
       {run?.status === "failed" && (
         <p className="error" role="alert">
           {run.error?.message ?? "Generation failed."}

@@ -76,6 +76,9 @@ The route agent (`POST /api/route-requests/{id}/agent-runs`, `route_api/agent.py
 `google_genai:gemini-3.5-flash`). Without both it answers 503 `agent_not_configured`; the rest
 of the API is unaffected. It stores how each answer was made and judged, never the brief or
 the answer, and a route it makes is an ordinary stored run.
+Its answer lists the `steps` the run took (read the request, asked a clarification, generated a
+route with its tries, drafted, judged, repaired, fell back), rebuilt from what code recorded,
+never model text. The page shows them and draws the route from `generation_run_id`.
 
 Owners: there is no sign-in yet. The owner is the `X-Owner-Id` header, or
 `LOCAL_OWNER_ID` (default `local-owner`). Anyone who can reach the API can claim any

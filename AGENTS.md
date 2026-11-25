@@ -78,8 +78,9 @@ npm ci
 git diff --exit-code -- openapi.json src/api-types.ts
 npm run lint
 npm audit --audit-level=moderate
-npm run e2e        # builds the page, starts the api with recorded OneMap and HeiGIT, desktop + mobile
+npm run e2e        # builds the page, starts the api with recorded OneMap and HeiGIT and scripted fake models, desktop + mobile
 ! grep -rl -e "api.heigit.org" -e "HEIGIT_API_KEY" -e "ONEMAP_API_TOKEN" .next/static
+! grep -rl -e "ANTHROPIC_API_KEY" -e "GOOGLE_API_KEY" -e "FakeModel" -e "scripted-agent" .next/static
 npm run e2e:staged # the deploy's staged browser test, recorded API, from an origin it does not trust
 
 cd ..

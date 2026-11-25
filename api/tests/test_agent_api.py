@@ -218,6 +218,32 @@ def test_the_steps_end_where_the_run_fell_back(
     assert steps[-2:] == last_steps
 
 
+def test_a_loop_that_cannot_be_made_lists_its_tries_then_the_fallback(clean_engine: Engine) -> None:
+    run_1k = Interpretation(activity="running", distance=DistanceTarget(kind="target", target_km=1))
+
+    def no_path(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"error": {"code": 2009}})
+
+    api = api_with(
+        clean_engine,
+        httpx.MockTransport(recorded_onemap),
+        "fake-onemap-token",
+        heigit_handler=no_path,
+        models=fake_models([run_1k], []),
+    )
+    request_id = confirm_start(api, AVENUE_SOUTH_BLOCK_11)
+
+    answer = ask(api, request_id, brief="a 1k run").json()
+
+    assert answer["run"]["kind"] == "no_route"
+    assert answer["run"]["generation_run_id"] is not None
+    assert answer["steps"] == [
+        step("read_request"),
+        step("generated_route", tries=5),
+        step("fallback", reason="no_route"),
+    ]
+
+
 def test_without_model_keys_the_agent_is_off_and_asks_nothing(clean_engine: Engine) -> None:
     heigit = CountingHeigit()
     api = agent_api(clean_engine, models=None, heigit=heigit)
