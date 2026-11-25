@@ -53,7 +53,7 @@ export default function RouteAssistant({ routeRequestId, distance, onRun }: Prop
   const [answer, setAnswer] = useState<AgentAnswer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notSetUp, setNotSetUp] = useState(false);
-  const replying = answer?.run.kind === "clarification";
+  const clarifying = answer?.run.kind === "clarification";
 
   async function ask() {
     if (brief.trim() === "") {
@@ -66,7 +66,10 @@ export default function RouteAssistant({ routeRequestId, distance, onRun }: Prop
     try {
       const found = await askAssistant(routeRequestId, brief.trim(), distance);
       setAnswer(found);
-      setBrief("");
+      // Each message is read on its own, so a question leaves the message there to edit.
+      if (found.run.kind !== "clarification") {
+        setBrief("");
+      }
       onRun(found.run.generation_run_id);
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === "agent_not_configured") {
@@ -94,7 +97,7 @@ export default function RouteAssistant({ routeRequestId, distance, onRun }: Prop
   return (
     <div className="assistant">
       <label>
-        {replying ? "Your reply" : "Ask the route assistant"}
+        {clarifying ? "Edit your message" : "Ask the route assistant"}
         <textarea
           value={brief}
           onChange={(event) => setBrief(event.target.value)}
@@ -104,13 +107,16 @@ export default function RouteAssistant({ routeRequestId, distance, onRun }: Prop
         />
       </label>
       <p className="address">
+        {clarifying &&
+          "It reads each message on its own, so include everything again." +
+            " If the form and your message disagree, change one of them. "}
         It starts from your confirmed start.{" "}
         {distance
           ? `The form's distance (${distanceText(distance)}) is sent with your message.`
           : "Say the distance in your message."}
       </p>
       <button type="button" className="confirm" onClick={ask} disabled={asking}>
-        {replying ? "Send reply" : "Ask"}
+        {clarifying ? "Ask again" : "Ask"}
       </button>
       {asking && (
         <p className="status" role="status">

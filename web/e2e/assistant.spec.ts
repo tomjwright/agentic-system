@@ -35,7 +35,7 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByText("Start confirmed")).toBeVisible();
 });
 
-test("answer the assistant's question, then get its judged loop as the stored GPX", async ({
+test("edit the message after a question, then get its judged loop as the stored GPX", async ({
   page,
 }) => {
   const assistant = page.locator(".assistant");
@@ -68,9 +68,11 @@ test("answer the assistant's question, then get its judged loop as the stored GP
   ]);
   await expect(page.getByRole("link", { name: "Download GPX" })).toHaveCount(0);
 
-  await assistant.getByLabel("Your reply").fill("5k is fine");
+  await expect(assistant.getByLabel("Edit your message")).toHaveValue("a 10k run");
+  await expect(assistant).toContainText("It reads each message on its own");
+  await assistant.getByLabel("Edit your message").fill("5k is fine");
   const answered = page.waitForResponse("**/agent-runs");
-  await assistant.getByRole("button", { name: "Send reply" }).click();
+  await assistant.getByRole("button", { name: "Ask again" }).click();
   const answer = await (await answered).json();
 
   await expect(assistant).toContainText("Here is a 5.26 km running loop from Avenue South Residence.");
