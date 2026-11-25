@@ -27,12 +27,14 @@ from route_api.agent_models import (
     Interpretation,
     RouteFacts,
     RunRequest,
+    StartSearch,
     Verdict,
 )
 from route_api.contracts import Distance, DistanceTarget
 from route_api.generation import Generation, generate
-from route_api.geography import line_length_m
+from route_api.geography import line_length_m, on_singapore_land
 from route_api.heigit import Heigit
+from route_api.onemap import OneMap
 from route_api.restrictions import RestrictedWays
 from route_api.route_selection import DISTANCE_LIMITS_KM, distance_bounds, outside_activity_limits
 from route_api.runs import route_limitations, unknown_surface_share
@@ -43,7 +45,8 @@ ACTIVITY_NAMES = {"running": "running", "road_cycling": "road cycling"}
 INTERPRET_PROMPT = (
     "You read requests for a running or road-cycling loop in Singapore. Report only what"
     " the user's message states: the activity, the distance (a target or a min-max range in"
-    " km) and any other wishes. Leave a field null when the message does not state it."
+    " km), the start place if one is named, and any other wishes. Leave a field null when"
+    " the message does not state it."
 )
 DRAFT_PROMPT = (
     "You write the reply a user sees. State only the facts given, in two or three plain"
@@ -60,6 +63,7 @@ JUDGE_PROMPT = (
 class RunState(TypedDict, total=False):
     interpretation: Interpretation
     clarification: Clarification
+    start_search: StartSearch
     facts: RouteFacts
     generation: Generation
     draft: str
@@ -77,6 +81,7 @@ class RouteAgent:
         request: RunRequest,
         agent_model: BaseChatModel,
         judge_model: BaseChatModel,
+        onemap: OneMap,
         heigit: Heigit,
         restricted_ways: RestrictedWays,
         time_budget_s: float,
@@ -84,6 +89,7 @@ class RouteAgent:
         self.request = request
         self.agent_model = agent_model
         self.judge_model = judge_model
+        self.onemap = onemap
         self.heigit = heigit
         self.restricted_ways = restricted_ways
         self.deadline = time.monotonic() + time_budget_s
@@ -126,9 +132,36 @@ class RouteAgent:
         except Exception:
             return {"fallback_reason": "interpretation_unavailable"}
         clarification = clarification_needed(request, interpretation)
-        if clarification is not None:
-            return {"clarification": clarification}
-        return {"interpretation": interpretation}
+        if clarification is None:
+            return {"interpretation": interpretation}
+        if clarification.reason == "missing_start" and interpretation.start_place:
+            return self.find_start(interpretation)
+        return {"clarification": clarification}
+
+    def find_start(self, interpretation: Interpretation) -> RunState:
+        """Every OneMap match on Singapore land for the named start. The user confirms one,
+        so no route is made."""
+        place = interpretation.start_place
+        assert place is not None
+        try:
+            found = self.onemap.search(place).places
+        except Exception:
+            problem = "Place search is unavailable right now."
+            return {"clarification": Clarification(reason="missing_start", details=[problem])}
+        matches = []
+        for match in found:
+            if on_singapore_land(*match.coordinates):
+                matches.append(match)
+        if not matches:
+            problem = f"No place called {place!r} was found."
+            return {"clarification": Clarification(reason="missing_start", details=[problem])}
+        details = [f"{match.name} ({match.address})" for match in matches]
+        activity = self.request.activity or interpretation.activity
+        assert activity is not None
+        return {
+            "clarification": Clarification(reason="confirm_start", details=details),
+            "start_search": StartSearch(query=place, activity=activity, matches=matches),
+        }
 
     def after_interpret(self, state: RunState) -> str:
         if "fallback_reason" in state:
@@ -216,12 +249,15 @@ def run_agent(
     request: RunRequest,
     agent_model: BaseChatModel,
     judge_model: BaseChatModel,
+    onemap: OneMap,
     heigit: Heigit,
     restricted_ways: RestrictedWays,
     time_budget_s: float = TIME_BUDGET_S,
 ) -> AgentResult:
     """Run one request through the graph and return the answer the user may see."""
-    agent = RouteAgent(request, agent_model, judge_model, heigit, restricted_ways, time_budget_s)
+    agent = RouteAgent(
+        request, agent_model, judge_model, onemap, heigit, restricted_ways, time_budget_s
+    )
     state: RunState = agent.graph().invoke({})
     clarification = state.get("clarification")
     facts = state.get("facts")
@@ -237,6 +273,7 @@ def run_agent(
         message_source=source,
         fallback_reason=state.get("fallback_reason"),
         clarification=clarification,
+        start_search=state.get("start_search"),
         facts=facts,
         generation=state.get("generation"),
         verdicts=state.get("verdicts", []),
@@ -339,7 +376,11 @@ def clarification_message(clarification: Clarification) -> str:
     if clarification.reason == "missing_distance":
         return "What distance would you like? Give a target or a range in km."
     if clarification.reason == "missing_start":
-        return "Where should the loop start? Search for a place and confirm it first."
+        question = "Where should the loop start? Search for a place and confirm it first."
+        return " ".join([*clarification.details, question])
+    if clarification.reason == "confirm_start":
+        matches = "; ".join(clarification.details)
+        return f"Which start do you mean: {matches}? Confirm one before a route is made."
     return f"{clarification.details[0]}. What distance would you like?"
 
 

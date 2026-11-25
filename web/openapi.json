@@ -952,6 +952,125 @@
         }
       }
     },
+    "/api/agent-runs": {
+      "post": {
+        "summary": "Start Agent Run Without Start",
+        "description": "Ask the route agent before a start is confirmed. It searches OneMap for the start\nthe message names and lists every match in start_choices; it never makes a route.",
+        "operationId": "start_agent_run_without_start_api_agent_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentRunWithoutStartCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAnswer"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/agent-runs/{agent_run_id}": {
       "get": {
         "summary": "Get Agent Run",
@@ -1486,6 +1605,17 @@
             },
             "type": "array",
             "title": "Steps"
+          },
+          "start_choices": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StartChoices"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set when the user must confirm a start; none is picked"
           }
         },
         "type": "object",
@@ -1504,9 +1634,17 @@
             "title": "Id"
           },
           "route_request_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Route Request Id"
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Request Id",
+            "description": "None when asked before a start was confirmed"
           },
           "status": {
             "type": "string",
@@ -1671,6 +1809,64 @@
           "brief"
         ],
         "title": "AgentRunCreate"
+      },
+      "AgentRunWithoutStartCreate": {
+        "properties": {
+          "brief": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Brief",
+            "description": "What the user typed; not stored"
+          },
+          "distance": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/DistanceTarget"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DistanceRange"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "kind",
+                  "mapping": {
+                    "range": "#/components/schemas/DistanceRange",
+                    "target": "#/components/schemas/DistanceTarget"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance",
+            "description": "The form's distance, if any"
+          },
+          "activity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "running",
+                  "road_cycling"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activity",
+            "description": "The form's activity, if any"
+          }
+        },
+        "type": "object",
+        "required": [
+          "brief"
+        ],
+        "title": "AgentRunWithoutStartCreate"
       },
       "AgentStep": {
         "properties": {
@@ -2612,6 +2808,37 @@
           "csrf_token"
         ],
         "title": "SignedIn"
+      },
+      "StartChoices": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "activity": {
+            "type": "string",
+            "enum": [
+              "running",
+              "road_cycling"
+            ],
+            "title": "Activity"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/Candidate"
+            },
+            "type": "array",
+            "title": "Candidates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query",
+          "activity",
+          "candidates"
+        ],
+        "title": "StartChoices",
+        "description": "Every match for the start the message named. The user confirms one with\nPOST /api/route-requests (a named start with this query), then asks again there."
       },
       "SurfaceDistance": {
         "properties": {

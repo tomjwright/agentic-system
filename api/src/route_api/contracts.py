@@ -249,11 +249,17 @@ class AgentRunCreate(BaseModel):
     distance: Distance | None = Field(default=None, description="The form's distance, if any")
 
 
+class AgentRunWithoutStartCreate(AgentRunCreate):
+    activity: Activity | None = Field(default=None, description="The form's activity, if any")
+
+
 class AgentRun(BaseModel):
     """How one route agent answer was made and judged. The brief and the answer are not kept."""
 
     id: UUID
-    route_request_id: UUID
+    route_request_id: UUID | None = Field(
+        description="None when asked before a start was confirmed"
+    )
     status: Literal["running", "finished"]
     kind: Literal["clarification", "route", "no_route", "failed"] | None
     message_source: Literal["approved_draft", "fallback"] | None = Field(
@@ -292,7 +298,19 @@ class AgentStep(BaseModel):
     )
 
 
+class StartChoices(BaseModel):
+    """Every match for the start the message named. The user confirms one with
+    POST /api/route-requests (a named start with this query), then asks again there."""
+
+    query: str
+    activity: Activity
+    candidates: list[Candidate]
+
+
 class AgentAnswer(BaseModel):
     run: AgentRun
     message: str = Field(description="An approved draft or the factual fallback; not stored")
     steps: list[AgentStep]
+    start_choices: StartChoices | None = Field(
+        default=None, description="Set when the user must confirm a start; none is picked"
+    )

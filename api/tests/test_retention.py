@@ -151,6 +151,7 @@ def test_the_purge_logs_how_much_it_deleted(
             "event": "retention_purged",
             "route_requests": 1,
             "e2e_route_requests": 2,
+            "agent_runs_without_start": 0,
             "sessions": sessions,
         }
     ]

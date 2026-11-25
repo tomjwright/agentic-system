@@ -370,3 +370,114 @@ def test_an_unexpected_failure_finishes_the_run_as_failed(
     assert stored["finished_at"] is not None
     assert "secret detail" not in str(dict(stored))
     assert ask(api, request_id).status_code == 429
+
+
+NAMED_RUN = Interpretation(
+    activity="running",
+    distance=DistanceTarget(kind="target", target_km=5),
+    start_place="Avenue South Residence",
+)
+FROM_AVENUE_SOUTH = "a 5k run from Avenue South Residence"
+WHICH_BLOCK = "Which Avenue South Residence block do you start from?"
+
+
+def ask_without_start(api: TestClient, owner: str = TOM) -> httpx2.Response:
+    response: httpx2.Response = api.post(
+        "/api/agent-runs", json={"brief": FROM_AVENUE_SOUTH}, headers=as_owner(api, owner)
+    )
+    return response
+
+
+def test_before_a_start_is_confirmed_every_match_is_offered_and_no_route_made(
+    clean_engine: Engine,
+) -> None:
+    heigit = CountingHeigit()
+    api = agent_api(clean_engine, fake_models([NAMED_RUN, WHICH_BLOCK], [APPROVED]), heigit)
+
+    response = ask_without_start(api)
+
+    assert response.status_code == 201
+    answer = response.json()
+    assert answer["message"] == WHICH_BLOCK
+    run = answer["run"]
+    assert (run["kind"], run["route_request_id"], run["generation_run_id"]) == (
+        "clarification",
+        None,
+        None,
+    )
+    assert answer["steps"] == [
+        step("read_request"),
+        step("asked_clarification", reason="confirm_start"),
+        step("drafted"),
+        step("judged", approved=True),
+    ]
+    found = answer["start_choices"]
+    assert (found["query"], found["activity"]) == ("Avenue South Residence", "running")
+    searched = api.post(
+        "/api/places/search", json={"query": "Avenue South Residence"}, headers=as_owner(api, TOM)
+    )
+    assert found["candidates"] == searched.json()["candidates"]
+    assert len(found["candidates"]) == 7
+    assert heigit.requests == []
+    mine = api.get(f"/api/agent-runs/{run['id']}", headers=as_owner(api, TOM))
+    theirs = api.get(f"/api/agent-runs/{run['id']}", headers=as_owner(api, SOMEONE))
+    assert (mine.json(), theirs.status_code) == (run, 404)
+
+
+def test_the_clicked_match_is_the_start_the_route_is_made_from(clean_engine: Engine) -> None:
+    heigit = CountingHeigit()
+    models = fake_models([NAMED_RUN, WHICH_BLOCK, NAMED_RUN, GOOD_DRAFT], [APPROVED, APPROVED])
+    api = agent_api(clean_engine, models, heigit)
+    found = ask_without_start(api).json()["start_choices"]
+    clicked = found["candidates"][0]
+    start = {"kind": "named", "query": found["query"], "source_id": clicked["source_id"]}
+
+    confirmed = api.post(
+        "/api/route-requests",
+        json={"activity": found["activity"], "start": start},
+        headers=as_owner(api, TOM),
+    )
+    answer = ask(api, confirmed.json()["id"], brief=FROM_AVENUE_SOUTH).json()
+
+    assert confirmed.json()["start"]["point"] == clicked["point"]
+    assert answer["run"]["kind"] == "route"
+    assert answer["start_choices"] is None
+    sent = json.loads(heigit.requests[0].content)
+    assert sent["coordinates"][0] == clicked["point"]["coordinates"]
+
+
+def test_a_named_start_that_is_not_found_is_asked_for_again(clean_engine: Engine) -> None:
+    nowhere = Interpretation(activity="running", start_place="Nowhere Lane")
+    nowhere.distance = NAMED_RUN.distance
+    api = agent_api(clean_engine, fake_models([nowhere, ConnectionError()], []))
+
+    answer = ask_without_start(api).json()
+
+    assert answer["run"]["kind"] == "clarification"
+    assert answer["start_choices"] is None
+    assert answer["message"].startswith("No place called 'Nowhere Lane' was found.")
+    assert answer["steps"][1] == step("asked_clarification", reason="missing_start")
+
+
+def test_asking_without_a_start_needs_model_keys_and_counts_as_a_run(
+    clean_engine: Engine,
+) -> None:
+    off = agent_api(clean_engine, models=None)
+    assert ask_without_start(off).json()["error"]["code"] == "agent_not_configured"
+
+    api = agent_api(clean_engine, fake_models([NAMED_RUN, WHICH_BLOCK], [APPROVED]), runs_per_day=1)
+    assert ask_without_start(api).status_code == 201
+    assert ask_without_start(api).status_code == 429
+
+
+def test_old_agent_runs_without_a_start_are_deleted(clean_engine: Engine) -> None:
+    api = agent_api(clean_engine, fake_models([NAMED_RUN, WHICH_BLOCK], [APPROVED]))
+    assert ask_without_start(api).status_code == 201
+    old = datetime.now(UTC) - timedelta(days=ROUTE_REQUEST_DAYS + 1)
+    with clean_engine.begin() as connection:
+        connection.execute(text("UPDATE agent_runs SET started_at = :old"), {"old": old})
+
+    purge_expired(clean_engine, datetime.now(UTC))
+
+    with clean_engine.connect() as connection:
+        assert connection.execute(text("SELECT count(*) FROM agent_runs")).scalar_one() == 0

@@ -26,7 +26,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from route_api.agent import run_agent
-from route_api.agent_models import RunRequest, RunStart
+from route_api.agent_models import AgentResult, RunRequest, RunStart
 from route_api.agent_runs import (
     answer_steps,
     fail_agent_run,
@@ -51,6 +51,7 @@ from route_api.contracts import (
     AgentAnswer,
     AgentRun,
     AgentRunCreate,
+    AgentRunWithoutStartCreate,
     Candidate,
     ConfirmedStart,
     ErrorResponse,
@@ -65,8 +66,9 @@ from route_api.contracts import (
     SearchOutcome,
     SelectedRoute,
     SignedIn,
+    StartChoices,
 )
-from route_api.db import GenerationRunRecord, RouteRequestRecord
+from route_api.db import AgentRunRecord, GenerationRunRecord, RouteRequestRecord
 from route_api.generation import generate
 from route_api.geography import on_singapore_land
 from route_api.gpx import route_to_gpx
@@ -74,7 +76,7 @@ from route_api.heigit import Heigit
 from route_api.llm import Models, models_from_env
 from route_api.logs import configure_logging, log_event
 from route_api.migrate import known_revisions
-from route_api.onemap import OneMap, ProviderError
+from route_api.onemap import OneMap, Place, ProviderError
 from route_api.restrictions import RestrictedWays, load_restricted_ways
 from route_api.retention import purge_expired
 from route_api.route_selection import DISTANCE_LIMITS_KM, distance_bounds, outside_activity_limits
@@ -163,6 +165,24 @@ def migration_head() -> str | None:
     config = Config()
     config.set_main_option("script_location", str(MIGRATIONS))
     return ScriptDirectory.from_config(config).get_current_head()
+
+
+def to_candidate(place: Place) -> Candidate:
+    return Candidate(
+        source_id=place.source_id,
+        name=place.name,
+        address=place.address,
+        postal=place.postal,
+        point=Point(coordinates=place.coordinates),
+    )
+
+
+def to_start_choices(result: AgentResult) -> StartChoices | None:
+    found = result.start_search
+    if found is None:
+        return None
+    candidates = [to_candidate(place) for place in found.matches]
+    return StartChoices(query=found.query, activity=found.activity, candidates=candidates)
 
 
 def create_app(
@@ -350,15 +370,7 @@ def create_app(
         for place in result.places:
             if not on_singapore_land(*place.coordinates):
                 continue
-            candidates.append(
-                Candidate(
-                    source_id=place.source_id,
-                    name=place.name,
-                    address=place.address,
-                    postal=place.postal,
-                    point=Point(coordinates=place.coordinates),
-                )
-            )
+            candidates.append(to_candidate(place))
         outcome: SearchOutcome = "multiple_matches"
         if len(candidates) == 0:
             outcome = "no_match"
@@ -537,70 +549,104 @@ def create_app(
             if not heigit.configured:
                 raise ApiError(503, "provider_not_configured", "Route generation is not configured")
             auth.check_run_budget(session, owner)
-            activity = route_request.activity
             start = RunStart(
                 name=route_request.start_name,
                 coordinates=(route_request.start_lon, route_request.start_lat),
             )
             run = new_agent_run(session, owner, route_request_id, models)
             session.commit()
-
             agent_request = RunRequest(
                 run_id=run.id,
                 brief=body.brief,
-                activity=activity,  # type: ignore[arg-type]
+                activity=route_request.activity,  # type: ignore[arg-type]
                 distance=body.distance,
                 start=start,
             )
-            started = time.monotonic()
-            try:
-                result = run_agent(
-                    agent_request, models.agent, models.judge, heigit, restricted_ways
+            return answer_agent_run(session, request, owner, run, agent_request)
+
+    @app.post("/api/agent-runs", status_code=201, responses=ERRORS)
+    def start_agent_run_without_start(
+        body: AgentRunWithoutStartCreate, request: Request, owner: Owner
+    ) -> AgentAnswer:
+        """Ask the route agent before a start is confirmed. It searches OneMap for the start
+        the message names and lists every match in start_choices; it never makes a route."""
+        with Session(engine) as session:
+            if models is None:
+                raise ApiError(503, "agent_not_configured", "The route assistant is not configured")
+            auth.check_run_budget(session, owner)
+            run = new_agent_run(session, owner, None, models)
+            session.commit()
+            agent_request = RunRequest(
+                run_id=run.id,
+                brief=body.brief,
+                activity=body.activity,
+                distance=body.distance,
+                start=None,
+            )
+            return answer_agent_run(session, request, owner, run, agent_request)
+
+    def answer_agent_run(
+        session: Session,
+        request: Request,
+        owner: str,
+        run: AgentRunRecord,
+        agent_request: RunRequest,
+    ) -> AgentAnswer:
+        """Run the agent, then save its route (if it made one) and how the answer was made."""
+        assert models is not None
+        started = time.monotonic()
+        try:
+            result = run_agent(
+                agent_request, models.agent, models.judge, onemap, heigit, restricted_ways
+            )
+            if result.generation is not None and result.facts is not None:
+                assert run.route_request_id is not None
+                restriction_data = None
+                if result.facts.activity == "road_cycling":
+                    restriction_data = restricted_ways.source
+                auth.lock_owner(session, owner)
+                generation_run = new_run(
+                    session,
+                    owner,
+                    run.route_request_id,
+                    result.facts.activity,
+                    restriction_data,
+                    run.id,
+                    result.facts.requested,
+                    distance_bounds(result.facts.requested),
                 )
-                if result.generation is not None and result.facts is not None:
-                    restriction_data = None
-                    if activity == "road_cycling":
-                        restriction_data = restricted_ways.source
-                    auth.lock_owner(session, owner)
-                    generation_run = new_run(
-                        session,
-                        owner,
-                        route_request_id,
-                        result.facts.activity,
-                        restriction_data,
-                        run.id,
-                        result.facts.requested,
-                        distance_bounds(result.facts.requested),
-                    )
-                    save_generation(session, generation_run, result.generation)
-                    run.generation_run_id = generation_run.id
-                finish_agent_run(run, result)
-                session.commit()
-            except Exception as error:
-                session.rollback()
-                fail_agent_run(run)
-                session.commit()
-                log_event(
-                    "agent_failed",
-                    request_id=request.state.request_id,
-                    agent_run_id=str(run.id),
-                    error=type(error).__name__,
-                )
-                message = "The route assistant failed; try again"
-                raise ApiError(500, "agent_failed", message) from None
+                save_generation(session, generation_run, result.generation)
+                run.generation_run_id = generation_run.id
+            finish_agent_run(run, result)
+            session.commit()
+        except Exception as error:
+            session.rollback()
+            fail_agent_run(run)
+            session.commit()
             log_event(
-                "agent_finished",
+                "agent_failed",
                 request_id=request.state.request_id,
                 agent_run_id=str(run.id),
-                kind=result.kind,
-                message_source=result.message_source,
-                fallback_reason=result.fallback_reason or "",
-                repairs=result.repairs,
-                duration_ms=round((time.monotonic() - started) * 1000),
+                error=type(error).__name__,
             )
-            return AgentAnswer(
-                run=to_agent_run(run), message=result.message, steps=answer_steps(result)
-            )
+            message = "The route assistant failed; try again"
+            raise ApiError(500, "agent_failed", message) from None
+        log_event(
+            "agent_finished",
+            request_id=request.state.request_id,
+            agent_run_id=str(run.id),
+            kind=result.kind,
+            message_source=result.message_source,
+            fallback_reason=result.fallback_reason or "",
+            repairs=result.repairs,
+            duration_ms=round((time.monotonic() - started) * 1000),
+        )
+        return AgentAnswer(
+            run=to_agent_run(run),
+            message=result.message,
+            steps=answer_steps(result),
+            start_choices=to_start_choices(result),
+        )
 
     @app.get("/api/agent-runs/{agent_run_id}", responses=ERRORS)
     def get_agent_run(agent_run_id: uuid.UUID, owner: Owner) -> AgentRun:

@@ -133,7 +133,7 @@ class AgentRunRecord(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
     owner_id: Mapped[str] = mapped_column(String(64))
-    route_request_id: Mapped[uuid.UUID] = mapped_column(
+    route_request_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("route_requests.id", ondelete="CASCADE"), index=True
     )
     generation_run_id: Mapped[uuid.UUID | None] = mapped_column(

@@ -23,7 +23,9 @@ from route_api.agent_models import (
 )
 from route_api.contracts import Activity, Distance, DistanceRange, DistanceTarget
 from route_api.heigit import Heigit
+from route_api.onemap import OneMap
 from route_api.restrictions import load_restricted_ways
+from tests import recorded_onemap
 from tests.fake_models import FakeModel
 from tests.recorded_heigit import FIXTURES, recorded_response
 
@@ -48,6 +50,7 @@ def run(
     start: RunStart | None = AVENUE_SOUTH,
     heigit_handler: httpx.MockTransport | None = None,
     time_budget_s: float = 100,
+    onemap_handler: httpx.MockTransport | None = None,
 ) -> AgentResult:
     transport = heigit_handler or httpx.MockTransport(recorded_response)
     heigit = Heigit(
@@ -56,10 +59,12 @@ def run(
         request_gap_seconds=0,
         retry_wait_seconds=0,
     )
+    onemap_transport = onemap_handler or httpx.MockTransport(recorded_onemap.recorded_response)
+    onemap = OneMap(httpx.Client(transport=onemap_transport), "synthetic-token", 0)
     request = RunRequest(
         run_id=uuid.uuid4(), brief=brief, activity=activity, distance=distance, start=start
     )
-    return run_agent(request, agent, judge, heigit, RESTRICTED_WAYS, time_budget_s)
+    return run_agent(request, agent, judge, onemap, heigit, RESTRICTED_WAYS, time_budget_s)
 
 
 def test_an_approved_answer_is_published_with_the_provider_geometry() -> None:
@@ -381,3 +386,123 @@ def test_a_ride_is_checked_for_restricted_roads() -> None:
     assert "It rides 46 m on trunk roads (West Coast Highway)." in result.message
     assert result.facts is not None
     assert any("no surface for" in line for line in result.facts.limitations)
+
+
+def never_called(request: httpx.Request) -> httpx.Response:
+    raise AssertionError(f"unexpected request to {request.url.host}")
+
+
+NAMED_START = Interpretation(
+    activity="running", distance=FIVE_KM, start_place="Avenue South Residence"
+)
+SILAT_AVENUE = [
+    f"{number} SILAT AVENUE AVENUE SOUTH RESIDENCE SINGAPORE {postal}"
+    for number, postal in [
+        (11, 168877),
+        (13, 168878),
+        (1, 168872),
+        (7, 168875),
+        (3, 168873),
+        (9, 168876),
+        (5, 168874),
+    ]
+]
+
+
+def test_a_named_start_is_searched_and_every_match_is_offered_for_confirmation() -> None:
+    question = "Which Avenue South Residence block do you start from?"
+    agent = FakeModel(replies=[NAMED_START, question])
+    judge = FakeModel(replies=[APPROVED])
+    result = run(
+        agent,
+        judge,
+        brief="a 5k run from Avenue South Residence",
+        start=None,
+        heigit_handler=httpx.MockTransport(never_called),
+    )
+
+    assert result.kind == "clarification"
+    assert result.clarification is not None
+    assert result.clarification.reason == "confirm_start"
+    assert result.message == question
+    assert result.generation is None
+    assert result.start_search is not None
+    assert (result.start_search.query, result.start_search.activity) == (
+        "Avenue South Residence",
+        "running",
+    )
+    matches = result.start_search.matches
+    assert [match.address for match in matches] == SILAT_AVENUE
+    assert matches[0].coordinates == (103.8291052120283, 1.276629534107344)
+    for prompt in agent.prompts[1:] + judge.prompts:
+        assert "11 SILAT AVENUE" in prompt
+        assert "103.82" not in prompt and "1.27" not in prompt
+        assert "synthetic-token" not in prompt
+
+
+def test_unconfirmed_matches_are_listed_in_the_fallback() -> None:
+    result = run(FakeModel(replies=[NAMED_START, ConnectionError()]), FakeModel(), start=None)
+
+    assert result.message.startswith(
+        "Which start do you mean: AVENUE SOUTH RESIDENCE"
+        " (11 SILAT AVENUE AVENUE SOUTH RESIDENCE SINGAPORE 168877);"
+    )
+    assert result.message.endswith("168874)? Confirm one before a route is made.")
+    assert result.message.count("SILAT AVENUE") == 7
+
+
+def server_error(request: httpx.Request) -> httpx.Response:
+    return httpx.Response(500)
+
+
+@pytest.mark.parametrize(
+    ("onemap", "problem"),
+    [
+        (recorded_onemap.recorded_response, "No place called 'Nowhere Lane' was found."),
+        (server_error, "Place search is unavailable right now."),
+    ],
+)
+def test_a_start_that_cannot_be_found_is_asked_for(onemap: Any, problem: str) -> None:
+    nowhere = Interpretation(activity="running", distance=FIVE_KM, start_place="Nowhere Lane")
+    result = run(
+        FakeModel(replies=[nowhere, ConnectionError()]),
+        FakeModel(),
+        start=None,
+        onemap_handler=httpx.MockTransport(onemap),
+    )
+
+    assert result.clarification == Clarification(reason="missing_start", details=[problem])
+    assert result.start_search is None
+    assert result.message == (
+        f"{problem} Where should the loop start? Search for a place and confirm it first."
+    )
+
+
+def test_a_confirmed_start_is_never_searched_again() -> None:
+    result = run(
+        FakeModel(replies=[NAMED_START, GOOD_DRAFT]),
+        FakeModel(replies=[APPROVED]),
+        onemap_handler=httpx.MockTransport(never_called),
+    )
+
+    assert result.kind == "route"
+    assert result.start_search is None
+
+
+def test_a_match_off_singapore_land_is_not_offered() -> None:
+    def first_match_at_sea(request: httpx.Request) -> httpx.Response:
+        found = json.loads(recorded_onemap.recorded_response(request).content)
+        found["results"][0]["LATITUDE"] = "1.2"
+        found["results"][0]["LONGITUDE"] = "103.9"
+        return httpx.Response(200, json=found)
+
+    result = run(
+        FakeModel(replies=[NAMED_START, ConnectionError()]),
+        FakeModel(),
+        start=None,
+        onemap_handler=httpx.MockTransport(first_match_at_sea),
+    )
+
+    assert result.start_search is not None
+    assert [match.address for match in result.start_search.matches] == SILAT_AVENUE[1:]
+    assert result.message.count("SILAT AVENUE") == 6

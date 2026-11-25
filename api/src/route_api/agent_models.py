@@ -3,7 +3,8 @@
 The server builds a RunRequest; models only ever produce an Interpretation (the agent)
 or a Verdict (the judge), and both are validated before use. RouteFacts are measured by
 deterministic code and are the only facts a draft may state. None of these shapes the
-models see holds coordinates: the start's position stays in RunStart, on the server.
+models see holds coordinates: the start's position stays in RunStart, and the places a
+named start matched stay in AgentResult.start_search, on the server.
 """
 
 from typing import Literal
@@ -13,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from route_api.contracts import Activity, Distance
 from route_api.generation import Generation
+from route_api.onemap import Place
 
 
 class RunStart(BaseModel):
@@ -35,6 +37,7 @@ class Interpretation(BaseModel):
 
     activity: Activity | None = None
     distance: Distance | None = None
+    start_place: str | None = Field(default=None, description="The start place named, as written")
     preferences: list[str] = Field(
         default_factory=list,
         max_length=5,
@@ -43,7 +46,12 @@ class Interpretation(BaseModel):
 
 
 ClarificationReason = Literal[
-    "missing_activity", "missing_distance", "missing_start", "conflict", "distance_out_of_limits"
+    "missing_activity",
+    "missing_distance",
+    "missing_start",
+    "confirm_start",
+    "conflict",
+    "distance_out_of_limits",
 ]
 
 
@@ -76,6 +84,14 @@ class Verdict(BaseModel):
     reasons: list[str] = Field(description="Every problem found; empty when approved")
 
 
+class StartSearch(BaseModel):
+    """The places a named start matched, for the user to confirm one. Never picked for them."""
+
+    query: str = Field(description="The start as the message named it, searched on OneMap")
+    activity: Activity
+    matches: list[Place]
+
+
 FallbackReason = Literal[
     "interpretation_unavailable",
     "no_route",
@@ -92,6 +108,7 @@ class AgentResult(BaseModel):
     message_source: Literal["approved_draft", "fallback"]
     fallback_reason: FallbackReason | None
     clarification: Clarification | None
+    start_search: StartSearch | None = Field(description="Set when the user must confirm a start")
     facts: RouteFacts | None
     generation: Generation | None = Field(description="For storage; never shown to a model")
     verdicts: list[Verdict]

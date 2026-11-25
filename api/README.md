@@ -79,6 +79,10 @@ the answer, and a route it makes is an ordinary stored run.
 Its answer lists the `steps` the run took (read the request, asked a clarification, generated a
 route with its tries, drafted, judged, repaired, fell back), rebuilt from what code recorded,
 never model text. The page shows them and draws the route from `generation_run_id`.
+Before a start is confirmed, `POST /api/agent-runs` asks the agent without one. When the
+message names a start it searches OneMap and returns every match in `start_choices`, never
+picking one and never making a route. The user confirms a match with `POST /api/route-requests`
+(a named start with that query) and asks again on the new route request.
 
 Owners: there is no sign-in yet. The owner is the `X-Owner-Id` header, or
 `LOCAL_OWNER_ID` (default `local-owner`). Anyone who can reach the API can claim any

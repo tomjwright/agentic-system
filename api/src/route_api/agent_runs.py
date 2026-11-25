@@ -18,7 +18,7 @@ from route_api.llm import Models
 
 
 def new_agent_run(
-    session: Session, owner: str, route_request_id: uuid.UUID, models: Models
+    session: Session, owner: str, route_request_id: uuid.UUID | None, models: Models
 ) -> AgentRunRecord:
     """Add a `running` agent run. The caller commits."""
     run = AgentRunRecord(

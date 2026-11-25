@@ -216,6 +216,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Agent Run Without Start
+         * @description Ask the route agent before a start is confirmed. It searches OneMap for the start
+         *     the message names and lists every match in start_choices; it never makes a route.
+         */
+        post: operations["start_agent_run_without_start_api_agent_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agent-runs/{agent_run_id}": {
         parameters: {
             query?: never;
@@ -314,6 +335,8 @@ export interface components {
             message: string;
             /** Steps */
             steps: components["schemas"]["AgentStep"][];
+            /** @description Set when the user must confirm a start; none is picked */
+            start_choices?: components["schemas"]["StartChoices"] | null;
         };
         /**
          * AgentRun
@@ -327,9 +350,9 @@ export interface components {
             id: string;
             /**
              * Route Request Id
-             * Format: uuid
+             * @description None when asked before a start was confirmed
              */
-            route_request_id: string;
+            route_request_id: string | null;
             /**
              * Status
              * @enum {string}
@@ -380,6 +403,24 @@ export interface components {
              * @description The form's distance, if any
              */
             distance?: (components["schemas"]["DistanceTarget"] | components["schemas"]["DistanceRange"]) | null;
+        };
+        /** AgentRunWithoutStartCreate */
+        AgentRunWithoutStartCreate: {
+            /**
+             * Brief
+             * @description What the user typed; not stored
+             */
+            brief: string;
+            /**
+             * Distance
+             * @description The form's distance, if any
+             */
+            distance?: (components["schemas"]["DistanceTarget"] | components["schemas"]["DistanceRange"]) | null;
+            /**
+             * Activity
+             * @description The form's activity, if any
+             */
+            activity?: ("running" | "road_cycling") | null;
         };
         /**
          * AgentStep
@@ -793,6 +834,22 @@ export interface components {
              * @description Send as X-CSRF-Token with every POST.
              */
             csrf_token: string;
+        };
+        /**
+         * StartChoices
+         * @description Every match for the start the message named. The user confirms one with
+         *     POST /api/route-requests (a named start with this query), then asks again there.
+         */
+        StartChoices: {
+            /** Query */
+            query: string;
+            /**
+             * Activity
+             * @enum {string}
+             */
+            activity: "running" | "road_cycling";
+            /** Candidates */
+            candidates: components["schemas"]["Candidate"][];
         };
         /** SurfaceDistance */
         SurfaceDistance: {
@@ -1563,6 +1620,111 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["AgentRunCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAnswer"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    start_agent_run_without_start_api_agent_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentRunWithoutStartCreate"];
             };
         };
         responses: {
